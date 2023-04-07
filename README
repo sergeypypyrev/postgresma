@@ -1,1 +1,3 @@
 debian 11.6.0 amd64
+apt install make gcc libreadline-dev zlib1g-dev flex bison
+https://www.postgresql.org/docs/15/installation.html

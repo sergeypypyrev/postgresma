@@ -1,0 +1,9 @@
+config.log
+config.status
+GNUmakefile
+*.o
+*.so
+*.a
+*.so.*
+*.pc
+objfiles.txt
