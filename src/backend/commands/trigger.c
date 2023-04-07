@@ -3,7 +3,7 @@
  * trigger.c
  *	  PostgreSQL TRIGGERs support code.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -55,11 +55,9 @@
 #include "utils/builtins.h"
 #include "utils/bytea.h"
 #include "utils/fmgroids.h"
-#include "utils/guc_hooks.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-#include "utils/plancache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
@@ -86,9 +84,8 @@ static bool GetTupleForTrigger(EState *estate,
 							   ItemPointer tid,
 							   LockTupleMode lockmode,
 							   TupleTableSlot *oldslot,
-							   TupleTableSlot **epqslot,
-							   TM_Result *tmresultp,
-							   TM_FailureData *tmfdp);
+							   TupleTableSlot **newSlot,
+							   TM_FailureData *tmfpd);
 static bool TriggerEnabled(EState *estate, ResultRelInfo *relinfo,
 						   Trigger *trigger, TriggerEvent event,
 						   Bitmapset *modifiedCols,
@@ -102,7 +99,7 @@ static void AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 								  ResultRelInfo *src_partinfo,
 								  ResultRelInfo *dst_partinfo,
 								  int event, bool row_trigger,
-								  TupleTableSlot *oldslot, TupleTableSlot *newslot,
+								  TupleTableSlot *oldtup, TupleTableSlot *newtup,
 								  List *recheckIndexes, Bitmapset *modifiedCols,
 								  TransitionCaptureState *transition_capture,
 								  bool is_crosspart_update);
@@ -297,6 +294,13 @@ CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
 					 errmsg("\"%s\" is a foreign table",
 							RelationGetRelationName(rel)),
 					 errdetail("Foreign tables cannot have INSTEAD OF triggers.")));
+
+		if (TRIGGER_FOR_TRUNCATE(stmt->events))
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("\"%s\" is a foreign table",
+							RelationGetRelationName(rel)),
+					 errdetail("Foreign tables cannot have TRUNCATE triggers.")));
 
 		/*
 		 * We disallow constraint triggers to protect the assumption that
@@ -697,7 +701,7 @@ CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
 		funcoid = LookupFuncName(stmt->funcname, 0, NULL, false);
 	if (!isInternal)
 	{
-		aclresult = object_aclcheck(ProcedureRelationId, funcoid, GetUserId(), ACL_EXECUTE);
+		aclresult = pg_proc_aclcheck(funcoid, GetUserId(), ACL_EXECUTE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_FUNCTION,
 						   NameListToString(stmt->funcname));
@@ -1150,6 +1154,9 @@ CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
 	if (partition_recurse)
 	{
 		PartitionDesc partdesc = RelationGetPartitionDesc(rel, true);
+		List	   *idxs = NIL;
+		List	   *childTbls = NIL;
+		ListCell   *l;
 		int			i;
 		MemoryContext oldcxt,
 					perChildCxt;
@@ -1159,22 +1166,51 @@ CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
 											ALLOCSET_SMALL_SIZES);
 
 		/*
-		 * We don't currently expect to be called with a valid indexOid.  If
-		 * that ever changes then we'll need to write code here to find the
-		 * corresponding child index.
+		 * When a trigger is being created associated with an index, we'll
+		 * need to associate the trigger in each child partition with the
+		 * corresponding index on it.
 		 */
-		Assert(!OidIsValid(indexOid));
+		if (OidIsValid(indexOid))
+		{
+			ListCell   *l;
+			List	   *idxs = NIL;
+
+			idxs = find_inheritance_children(indexOid, ShareRowExclusiveLock);
+			foreach(l, idxs)
+				childTbls = lappend_oid(childTbls,
+										IndexGetRelation(lfirst_oid(l),
+														 false));
+		}
 
 		oldcxt = MemoryContextSwitchTo(perChildCxt);
 
 		/* Iterate to create the trigger on each existing partition */
 		for (i = 0; i < partdesc->nparts; i++)
 		{
+			Oid			indexOnChild = InvalidOid;
+			ListCell   *l2;
 			CreateTrigStmt *childStmt;
 			Relation	childTbl;
 			Node	   *qual;
 
 			childTbl = table_open(partdesc->oids[i], ShareRowExclusiveLock);
+
+			/* Find which of the child indexes is the one on this partition */
+			if (OidIsValid(indexOid))
+			{
+				forboth(l, idxs, l2, childTbls)
+				{
+					if (lfirst_oid(l2) == partdesc->oids[i])
+					{
+						indexOnChild = lfirst_oid(l);
+						break;
+					}
+				}
+				if (!OidIsValid(indexOnChild))
+					elog(ERROR, "failed to find index matching index \"%s\" in partition \"%s\"",
+						 get_rel_name(indexOid),
+						 get_rel_name(partdesc->oids[i]));
+			}
 
 			/*
 			 * Initialize our fabricated parse node by copying the original
@@ -1195,7 +1231,7 @@ CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
 
 			CreateTriggerFiringOn(childStmt, queryString,
 								  partdesc->oids[i], refRelOid,
-								  InvalidOid, InvalidOid,
+								  InvalidOid, indexOnChild,
 								  funcoid, trigoid, qual,
 								  isInternal, true, trigger_fires_when);
 
@@ -1206,6 +1242,8 @@ CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
 
 		MemoryContextSwitchTo(oldcxt);
 		MemoryContextDelete(perChildCxt);
+		list_free(idxs);
+		list_free(childTbls);
 	}
 
 	/* Keep lock on target rel until end of xact */
@@ -1446,7 +1484,7 @@ RangeVarCallbackForRenameTrigger(const RangeVar *rv, Oid relid, Oid oldrelid,
 				 errdetail_relkind_not_supported(form->relkind)));
 
 	/* you must own the table to rename one of its triggers */
-	if (!object_ownercheck(RelationRelationId, relid, GetUserId()))
+	if (!pg_class_ownercheck(relid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(get_rel_relkind(relid)), rv->relname);
 	if (!allowSystemTableMods && IsSystemClass(relid, form))
 		ereport(ERROR,
@@ -1695,9 +1733,9 @@ renametrig_partition(Relation tgrel, Oid partitionId, Oid parentTriggerOid,
 
 			for (int i = 0; i < partdesc->nparts; i++)
 			{
-				Oid			partoid = partdesc->oids[i];
+				Oid			partitionId = partdesc->oids[i];
 
-				renametrig_partition(tgrel, partoid, tgform->oid, newname,
+				renametrig_partition(tgrel, partitionId, tgform->oid, newname,
 									 NameStr(tgform->tgname));
 			}
 		}
@@ -1716,8 +1754,7 @@ renametrig_partition(Relation tgrel, Oid partitionId, Oid parentTriggerOid,
  *	to change 'tgenabled' field for the specified trigger(s)
  *
  * rel: relation to process (caller must hold suitable lock on it)
- * tgname: name of trigger to process, or NULL to scan all triggers
- * tgparent: if not zero, process only triggers with this tgparentid
+ * tgname: trigger to process, or NULL to scan all triggers
  * fires_when: new value for tgenabled field. In addition to generic
  *			   enablement/disablement, this also defines when the trigger
  *			   should be fired in session replication roles.
@@ -1729,9 +1766,9 @@ renametrig_partition(Relation tgrel, Oid partitionId, Oid parentTriggerOid,
  * system triggers
  */
 void
-EnableDisableTrigger(Relation rel, const char *tgname, Oid tgparent,
-					 char fires_when, bool skip_system, bool recurse,
-					 LOCKMODE lockmode)
+EnableDisableTriggerNew(Relation rel, const char *tgname,
+						char fires_when, bool skip_system, bool recurse,
+						LOCKMODE lockmode)
 {
 	Relation	tgrel;
 	int			nkeys;
@@ -1767,9 +1804,6 @@ EnableDisableTrigger(Relation rel, const char *tgname, Oid tgparent,
 	while (HeapTupleIsValid(tuple = systable_getnext(tgscan)))
 	{
 		Form_pg_trigger oldtrig = (Form_pg_trigger) GETSTRUCT(tuple);
-
-		if (OidIsValid(tgparent) && tgparent != oldtrig->tgparentid)
-			continue;
 
 		if (oldtrig->tgisinternal)
 		{
@@ -1821,10 +1855,9 @@ EnableDisableTrigger(Relation rel, const char *tgname, Oid tgparent,
 				Relation	part;
 
 				part = relation_open(partdesc->oids[i], lockmode);
-				/* Match on child triggers' tgparentid, not their name */
-				EnableDisableTrigger(part, NULL, oldtrig->oid,
-									 fires_when, skip_system, recurse,
-									 lockmode);
+				EnableDisableTriggerNew(part, NameStr(oldtrig->tgname),
+										fires_when, skip_system, recurse,
+										lockmode);
 				table_close(part, NoLock);	/* keep lock till commit */
 			}
 		}
@@ -1850,6 +1883,19 @@ EnableDisableTrigger(Relation rel, const char *tgname, Oid tgparent,
 	 */
 	if (changed)
 		CacheInvalidateRelcache(rel);
+}
+
+/*
+ * ABI-compatible wrapper for the above.  To keep as close possible to the old
+ * behavior, this never recurses.  Do not call this function in new code.
+ */
+void
+EnableDisableTrigger(Relation rel, const char *tgname,
+					 char fires_when, bool skip_system,
+					 LOCKMODE lockmode)
+{
+	EnableDisableTriggerNew(rel, tgname, fires_when, skip_system,
+							true, lockmode);
 }
 
 
@@ -2695,9 +2741,7 @@ ExecBRDeleteTriggers(EState *estate, EPQState *epqstate,
 					 ResultRelInfo *relinfo,
 					 ItemPointer tupleid,
 					 HeapTuple fdw_trigtuple,
-					 TupleTableSlot **epqslot,
-					 TM_Result *tmresult,
-					 TM_FailureData *tmfd)
+					 TupleTableSlot **epqslot)
 {
 	TupleTableSlot *slot = ExecGetTriggerOldSlot(estate, relinfo);
 	TriggerDesc *trigdesc = relinfo->ri_TrigDesc;
@@ -2714,7 +2758,7 @@ ExecBRDeleteTriggers(EState *estate, EPQState *epqstate,
 
 		if (!GetTupleForTrigger(estate, epqstate, relinfo, tupleid,
 								LockTupleExclusive, slot, &epqslot_candidate,
-								tmresult, tmfd))
+								NULL))
 			return false;
 
 		/*
@@ -2804,7 +2848,6 @@ ExecARDeleteTriggers(EState *estate,
 							   tupleid,
 							   LockTupleExclusive,
 							   slot,
-							   NULL,
 							   NULL,
 							   NULL);
 		else
@@ -2947,7 +2990,6 @@ ExecBRUpdateTriggers(EState *estate, EPQState *epqstate,
 					 ItemPointer tupleid,
 					 HeapTuple fdw_trigtuple,
 					 TupleTableSlot *newslot,
-					 TM_Result *tmresult,
 					 TM_FailureData *tmfd)
 {
 	TriggerDesc *trigdesc = relinfo->ri_TrigDesc;
@@ -2972,7 +3014,7 @@ ExecBRUpdateTriggers(EState *estate, EPQState *epqstate,
 		/* get a copy of the on-disk tuple we are planning to update */
 		if (!GetTupleForTrigger(estate, epqstate, relinfo, tupleid,
 								lockmode, oldslot, &epqslot_candidate,
-								tmresult, tmfd))
+								tmfd))
 			return false;		/* cancel the update action */
 
 		/*
@@ -3126,7 +3168,6 @@ ExecARUpdateTriggers(EState *estate, ResultRelInfo *relinfo,
 							   tupleid,
 							   LockTupleExclusive,
 							   oldslot,
-							   NULL,
 							   NULL,
 							   NULL);
 		else if (fdw_trigtuple != NULL)
@@ -3283,7 +3324,6 @@ GetTupleForTrigger(EState *estate,
 				   LockTupleMode lockmode,
 				   TupleTableSlot *oldslot,
 				   TupleTableSlot **epqslot,
-				   TM_Result *tmresultp,
 				   TM_FailureData *tmfdp)
 {
 	Relation	relation = relinfo->ri_RelationDesc;
@@ -3311,8 +3351,6 @@ GetTupleForTrigger(EState *estate,
 								&tmfd);
 
 		/* Let the caller know about the status of this operation */
-		if (tmresultp)
-			*tmresultp = test;
 		if (tmfdp)
 			*tmfdp = tmfd;
 
@@ -3340,18 +3378,6 @@ GetTupleForTrigger(EState *estate,
 			case TM_Ok:
 				if (tmfd.traversed)
 				{
-					/*
-					 * Recheck the tuple using EPQ. For MERGE, we leave this
-					 * to the caller (it must do additional rechecking, and
-					 * might end up executing a different action entirely).
-					 */
-					if (estate->es_plannedstmt->commandType == CMD_MERGE)
-					{
-						if (tmresultp)
-							*tmresultp = TM_Updated;
-						return false;
-					}
-
 					*epqslot = EvalPlanQual(epqstate,
 											relation,
 											relinfo->ri_RangeTableIndex,
@@ -3897,7 +3923,7 @@ static void TransitionTableAddTuple(EState *estate,
 									Tuplestorestate *tuplestore);
 static void AfterTriggerFreeQuery(AfterTriggersQueryData *qs);
 static SetConstraintState SetConstraintStateCreate(int numalloc);
-static SetConstraintState SetConstraintStateCopy(SetConstraintState origstate);
+static SetConstraintState SetConstraintStateCopy(SetConstraintState state);
 static SetConstraintState SetConstraintStateAddItem(SetConstraintState state,
 													Oid tgoid, bool tgisdeferred);
 static void cancel_prior_stmt_triggers(Oid relid, CmdType cmdType, int tgevent);
@@ -6532,20 +6558,6 @@ done:
 	/* In any case, save current insertion point for next time */
 	table->after_trig_done = true;
 	table->after_trig_events = qs->events;
-}
-
-/*
- * GUC assign_hook for session_replication_role
- */
-void
-assign_session_replication_role(int newval, void *extra)
-{
-	/*
-	 * Must flush the plan cache when changing replication role; but don't
-	 * flush unnecessarily.
-	 */
-	if (SessionReplicationRole != newval)
-		ResetPlanCache();
 }
 
 /*

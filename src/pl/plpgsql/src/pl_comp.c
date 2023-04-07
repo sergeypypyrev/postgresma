@@ -3,7 +3,7 @@
  * pl_comp.c		- Compiler part of the PL/pgSQL
  *			  procedural language
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -271,6 +271,7 @@ do_compile(FunctionCallInfo fcinfo,
 	bool		is_dml_trigger = CALLED_AS_TRIGGER(fcinfo);
 	bool		is_event_trigger = CALLED_AS_EVENT_TRIGGER(fcinfo);
 	Datum		prosrcdatum;
+	bool		isnull;
 	char	   *proc_source;
 	HeapTuple	typeTup;
 	Form_pg_type typeStruct;
@@ -295,7 +296,10 @@ do_compile(FunctionCallInfo fcinfo,
 	 * cannot be invoked recursively, so there's no need to save and restore
 	 * the static variables used here.
 	 */
-	prosrcdatum = SysCacheGetAttrNotNull(PROCOID, procTup, Anum_pg_proc_prosrc);
+	prosrcdatum = SysCacheGetAttr(PROCOID, procTup,
+								  Anum_pg_proc_prosrc, &isnull);
+	if (isnull)
+		elog(ERROR, "null prosrc");
 	proc_source = TextDatumGetCString(prosrcdatum);
 	plpgsql_scanner_init(proc_source);
 
@@ -1209,6 +1213,7 @@ resolve_column_ref(ParseState *pstate, PLpgSQL_expr *expr,
 			{
 				Node	   *field1 = (Node *) linitial(cref->fields);
 
+				Assert(IsA(field1, String));
 				name1 = strVal(field1);
 				nnames_scalar = 1;
 				nnames_wholerow = 1;
@@ -1219,6 +1224,7 @@ resolve_column_ref(ParseState *pstate, PLpgSQL_expr *expr,
 				Node	   *field1 = (Node *) linitial(cref->fields);
 				Node	   *field2 = (Node *) lsecond(cref->fields);
 
+				Assert(IsA(field1, String));
 				name1 = strVal(field1);
 
 				/* Whole-row reference? */
@@ -1230,6 +1236,7 @@ resolve_column_ref(ParseState *pstate, PLpgSQL_expr *expr,
 					break;
 				}
 
+				Assert(IsA(field2, String));
 				name2 = strVal(field2);
 				colname = name2;
 				nnames_scalar = 2;
@@ -1243,7 +1250,9 @@ resolve_column_ref(ParseState *pstate, PLpgSQL_expr *expr,
 				Node	   *field2 = (Node *) lsecond(cref->fields);
 				Node	   *field3 = (Node *) lthird(cref->fields);
 
+				Assert(IsA(field1, String));
 				name1 = strVal(field1);
+				Assert(IsA(field2, String));
 				name2 = strVal(field2);
 
 				/* Whole-row reference? */
@@ -1255,6 +1264,7 @@ resolve_column_ref(ParseState *pstate, PLpgSQL_expr *expr,
 					break;
 				}
 
+				Assert(IsA(field3, String));
 				name3 = strVal(field3);
 				colname = name3;
 				nnames_field = 2;
@@ -2623,7 +2633,7 @@ plpgsql_HashTableLookup(PLpgSQL_func_hashkey *func_key)
 	plpgsql_HashEnt *hentry;
 
 	hentry = (plpgsql_HashEnt *) hash_search(plpgsql_HashTable,
-											 func_key,
+											 (void *) func_key,
 											 HASH_FIND,
 											 NULL);
 	if (hentry)
@@ -2640,7 +2650,7 @@ plpgsql_HashTableInsert(PLpgSQL_function *function,
 	bool		found;
 
 	hentry = (plpgsql_HashEnt *) hash_search(plpgsql_HashTable,
-											 func_key,
+											 (void *) func_key,
 											 HASH_ENTER,
 											 &found);
 	if (found)
@@ -2661,7 +2671,7 @@ plpgsql_HashTableDelete(PLpgSQL_function *function)
 		return;
 
 	hentry = (plpgsql_HashEnt *) hash_search(plpgsql_HashTable,
-											 function->fn_hashkey,
+											 (void *) function->fn_hashkey,
 											 HASH_REMOVE,
 											 NULL);
 	if (hentry == NULL)

@@ -21,9 +21,9 @@ Running the tests
 NOTE: You must have given the --enable-tap-tests argument to configure.
 
 Run
-    make check PG_TEST_EXTRA=kerberos
+    make check
 or
-    make installcheck PG_TEST_EXTRA=kerberos
+    make installcheck
 You can use "make installcheck" if you previously did "make install".
 In that case, the code in the installation tree is tested.  With
 "make check", a temporary installation tree is built from the current

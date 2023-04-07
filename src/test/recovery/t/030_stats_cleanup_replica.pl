@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2023, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Tests that standbys:
 # - drop stats for objects when the those records are replayed
@@ -38,7 +38,8 @@ drop_table_by_oid('postgres', $tableoid);
 drop_function_by_oid('postgres', $funcoid);
 
 $sect = 'post drop';
-$node_primary->wait_for_replay_catchup($node_standby);
+my $primary_lsn = $node_primary->lsn('flush');
+$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
 test_standby_func_tab_stats_status('postgres',
 	$dboid, $tableoid, $funcoid, 'f');
 
@@ -48,7 +49,8 @@ test_standby_func_tab_stats_status('postgres',
 $sect = "schema creation";
 
 $node_primary->safe_psql('postgres', "CREATE SCHEMA drop_schema_test1");
-$node_primary->wait_for_replay_catchup($node_standby);
+$primary_lsn = $node_primary->lsn('flush');
+$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
 
 ($dboid, $tableoid, $funcoid) =
   populate_standby_stats('postgres', 'drop_schema_test1');
@@ -59,7 +61,8 @@ $node_primary->safe_psql('postgres', "DROP SCHEMA drop_schema_test1 CASCADE");
 
 $sect = "post schema drop";
 
-$node_primary->wait_for_replay_catchup($node_standby);
+$primary_lsn = $node_primary->lsn('flush');
+$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
 
 # verify table and function stats removed from standby
 test_standby_func_tab_stats_status('postgres',
@@ -71,7 +74,8 @@ test_standby_func_tab_stats_status('postgres',
 $sect = "createdb";
 
 $node_primary->safe_psql('postgres', "CREATE DATABASE test");
-$node_primary->wait_for_replay_catchup($node_standby);
+$primary_lsn = $node_primary->lsn('flush');
+$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
 
 ($dboid, $tableoid, $funcoid) = populate_standby_stats('test', 'public');
 
@@ -80,8 +84,9 @@ test_standby_func_tab_stats_status('test', $dboid, $tableoid, $funcoid, 't');
 test_standby_db_stats_status('test', $dboid, 't');
 
 $node_primary->safe_psql('postgres', "DROP DATABASE test");
-$sect = "post dropdb";
-$node_primary->wait_for_replay_catchup($node_standby);
+$sect        = "post dropdb";
+$primary_lsn = $node_primary->lsn('flush');
+$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
 
 # Test that the stats were cleaned up on standby
 # Note that this connects to 'postgres' but provides the dboid of dropped db
@@ -132,7 +137,8 @@ sub populate_standby_stats
 	$node_primary->safe_psql($connect_db,
 		"CREATE FUNCTION $schema.drop_func_test1() RETURNS VOID AS 'select 2;' LANGUAGE SQL IMMUTABLE"
 	);
-	$node_primary->wait_for_replay_catchup($node_standby);
+	my $primary_lsn = $node_primary->lsn('flush');
+	$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
 
 	# collect object oids
 	my $dboid = $node_standby->safe_psql($connect_db,

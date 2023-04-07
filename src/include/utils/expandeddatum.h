@@ -34,7 +34,7 @@
  * value if they fail partway through.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/expandeddatum.h
@@ -43,8 +43,6 @@
  */
 #ifndef EXPANDEDDATUM_H
 #define EXPANDEDDATUM_H
-
-#include "varatt.h"
 
 /* Size of an EXTERNAL datum that contains a pointer to an expanded object */
 #define EXPANDED_POINTER_SIZE (VARHDRSZ_EXTERNAL + sizeof(varatt_expanded))
@@ -135,17 +133,8 @@ struct ExpandedObjectHeader
  * (More of these might be worth inlining later.)
  */
 
-static inline Datum
-EOHPGetRWDatum(const struct ExpandedObjectHeader *eohptr)
-{
-	return PointerGetDatum(eohptr->eoh_rw_ptr);
-}
-
-static inline Datum
-EOHPGetRODatum(const struct ExpandedObjectHeader *eohptr)
-{
-	return PointerGetDatum(eohptr->eoh_ro_ptr);
-}
+#define EOHPGetRWDatum(eohptr)	PointerGetDatum((eohptr)->eoh_rw_ptr)
+#define EOHPGetRODatum(eohptr)	PointerGetDatum((eohptr)->eoh_ro_ptr)
 
 /* Does the Datum represent a writable expanded object? */
 #define DatumIsReadWriteExpandedObject(d, isnull, typlen) \

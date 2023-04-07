@@ -4,7 +4,7 @@
  *
  * Routines to support SELinux labels (security context)
  *
- * Copyright (c) 2010-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * -------------------------------------------------------------------------
  */
@@ -646,24 +646,45 @@ sepgsql_mcstrans_out(PG_FUNCTION_ARGS)
 /*
  * quote_object_name
  *
- * Concatenate as many of the given strings as aren't NULL, with dots between.
- * Quote any of the strings that wouldn't be valid identifiers otherwise.
+ * It tries to quote the supplied identifiers
  */
 static char *
 quote_object_name(const char *src1, const char *src2,
 				  const char *src3, const char *src4)
 {
 	StringInfoData result;
+	const char *temp;
 
 	initStringInfo(&result);
+
 	if (src1)
-		appendStringInfoString(&result, quote_identifier(src1));
+	{
+		temp = quote_identifier(src1);
+		appendStringInfoString(&result, temp);
+		if (src1 != temp)
+			pfree((void *) temp);
+	}
 	if (src2)
-		appendStringInfo(&result, ".%s", quote_identifier(src2));
+	{
+		temp = quote_identifier(src2);
+		appendStringInfo(&result, ".%s", temp);
+		if (src2 != temp)
+			pfree((void *) temp);
+	}
 	if (src3)
-		appendStringInfo(&result, ".%s", quote_identifier(src3));
+	{
+		temp = quote_identifier(src3);
+		appendStringInfo(&result, ".%s", temp);
+		if (src3 != temp)
+			pfree((void *) temp);
+	}
 	if (src4)
-		appendStringInfo(&result, ".%s", quote_identifier(src4));
+	{
+		temp = quote_identifier(src4);
+		appendStringInfo(&result, ".%s", temp);
+		if (src4 != temp)
+			pfree((void *) temp);
+	}
 	return result.data;
 }
 

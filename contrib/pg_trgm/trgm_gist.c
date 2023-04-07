@@ -8,7 +8,6 @@
 #include "fmgr.h"
 #include "port/pg_bitutils.h"
 #include "trgm.h"
-#include "varatt.h"
 
 /* gist_trgm_ops opclass options */
 typedef struct
@@ -56,21 +55,15 @@ PG_FUNCTION_INFO_V1(gtrgm_options);
 Datum
 gtrgm_in(PG_FUNCTION_ARGS)
 {
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("cannot accept a value of type %s", "gtrgm")));
-
-	PG_RETURN_VOID();			/* keep compiler quiet */
+	elog(ERROR, "not implemented");
+	PG_RETURN_DATUM(0);
 }
 
 Datum
 gtrgm_out(PG_FUNCTION_ARGS)
 {
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("cannot display a value of type %s", "gtrgm")));
-
-	PG_RETURN_VOID();			/* keep compiler quiet */
+	elog(ERROR, "not implemented");
+	PG_RETURN_DATUM(0);
 }
 
 static TRGM *
@@ -102,7 +95,7 @@ makesign(BITVECP sign, TRGM *a, int siglen)
 	trgm	   *ptr = GETARR(a);
 	int32		tmp = 0;
 
-	MemSet(sign, 0, siglen);
+	MemSet((void *) sign, 0, siglen);
 	SETBIT(sign, SIGLENBIT(siglen));	/* set last unused bit */
 	for (k = 0; k < len; k++)
 	{
@@ -755,7 +748,7 @@ fillcache(CACHESIGN *item, TRGM *key, BITVECP sign, int siglen)
 	else if (ISALLTRUE(key))
 		item->allistrue = true;
 	else
-		memcpy(item->sign, GETSIGN(key), siglen);
+		memcpy((void *) item->sign, (void *) GETSIGN(key), siglen);
 }
 
 #define WISH_F(a,b,c) (double)( -(double)(((a)-(b))*((a)-(b))*((a)-(b)))*(c) )
@@ -872,7 +865,7 @@ gtrgm_picksplit(PG_FUNCTION_ARGS)
 		size_beta = hemdistcache(&(cache[seed_2]), &(cache[j]), siglen);
 		costvector[j - 1].cost = abs(size_alpha - size_beta);
 	}
-	qsort(costvector, maxoff, sizeof(SPLITCOST), comparecost);
+	qsort((void *) costvector, maxoff, sizeof(SPLITCOST), comparecost);
 
 	for (k = 0; k < maxoff; k++)
 	{
@@ -921,7 +914,7 @@ gtrgm_picksplit(PG_FUNCTION_ARGS)
 			if (ISALLTRUE(datum_l) || cache[j].allistrue)
 			{
 				if (!ISALLTRUE(datum_l))
-					memset(GETSIGN(datum_l), 0xff, siglen);
+					MemSet((void *) GETSIGN(datum_l), 0xff, siglen);
 			}
 			else
 			{
@@ -937,7 +930,7 @@ gtrgm_picksplit(PG_FUNCTION_ARGS)
 			if (ISALLTRUE(datum_r) || cache[j].allistrue)
 			{
 				if (!ISALLTRUE(datum_r))
-					memset(GETSIGN(datum_r), 0xff, siglen);
+					MemSet((void *) GETSIGN(datum_r), 0xff, siglen);
 			}
 			else
 			{

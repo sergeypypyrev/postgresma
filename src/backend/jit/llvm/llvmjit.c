@@ -3,7 +3,7 @@
  * llvmjit.c
  *	  Core part of the LLVM JIT provider.
  *
- * Copyright (c) 2016-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/jit/llvm/llvmjit.c
@@ -514,7 +514,7 @@ llvm_function_reference(LLVMJitContext *context,
 	else if (basename != NULL)
 	{
 		/* internal function */
-		funcname = pstrdup(basename);
+		funcname = psprintf("%s", basename);
 	}
 	else
 	{
@@ -658,7 +658,7 @@ llvm_compile_module(LLVMJitContext *context)
 	{
 		char	   *filename;
 
-		filename = psprintf("%d.%zu.bc",
+		filename = psprintf("%u.%zu.bc",
 							MyProcPid,
 							context->module_generation);
 		LLVMWriteBitcodeToFile(context->module, filename);
@@ -677,7 +677,7 @@ llvm_compile_module(LLVMJitContext *context)
 	{
 		char	   *filename;
 
-		filename = psprintf("%d.%zu.optimized.bc",
+		filename = psprintf("%u.%zu.optimized.bc",
 							MyProcPid,
 							context->module_generation);
 		LLVMWriteBitcodeToFile(context->module, filename);

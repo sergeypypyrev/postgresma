@@ -96,7 +96,7 @@ int32		cube_cmp_v0(NDBOX *a, NDBOX *b);
 bool		cube_contains_v0(NDBOX *a, NDBOX *b);
 bool		cube_overlap_v0(NDBOX *a, NDBOX *b);
 NDBOX	   *cube_union_v0(NDBOX *a, NDBOX *b);
-void		rt_cube_size(NDBOX *a, double *size);
+void		rt_cube_size(NDBOX *a, double *sz);
 NDBOX	   *g_cube_binary_union(NDBOX *r1, NDBOX *r2, int *sizep);
 bool		g_cube_leaf_consistent(NDBOX *key, NDBOX *query, StrategyNumber strategy);
 bool		g_cube_internal_consistent(NDBOX *key, NDBOX *query, StrategyNumber strategy);
@@ -119,13 +119,12 @@ cube_in(PG_FUNCTION_ARGS)
 {
 	char	   *str = PG_GETARG_CSTRING(0);
 	NDBOX	   *result;
-	Size		scanbuflen;
 
-	cube_scanner_init(str, &scanbuflen);
+	cube_scanner_init(str);
 
-	cube_yyparse(&result, scanbuflen, fcinfo->context);
+	if (cube_yyparse(&result) != 0)
+		cube_yyerror(&result, "cube parser failed");
 
-	/* We might as well run this even on failure. */
 	cube_scanner_finish();
 
 	PG_RETURN_NDBOX_P(result);
@@ -926,7 +925,7 @@ rt_cube_size(NDBOX *a, double *size)
 	{
 		result = 1.0;
 		for (i = 0; i < DIM(a); i++)
-			result *= fabs(UR_COORD(a, i) - LL_COORD(a, i));
+			result *= Abs(UR_COORD(a, i) - LL_COORD(a, i));
 	}
 	*size = result;
 }

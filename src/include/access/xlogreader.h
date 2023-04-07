@@ -3,7 +3,7 @@
  * xlogreader.h
  *		Definitions for the generic XLog reading facility
  *
- * Portions Copyright (c) 2013-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/include/access/xlogreader.h
@@ -122,7 +122,7 @@ typedef struct
 	bool		in_use;
 
 	/* Identify the block this refers to */
-	RelFileLocator rlocator;
+	RelFileNode rnode;
 	ForkNumber	forknum;
 	BlockNumber blkno;
 
@@ -332,6 +332,8 @@ extern XLogReaderState *XLogReaderAllocate(int wal_segment_size,
 										   const char *waldir,
 										   XLogReaderRoutine *routine,
 										   void *private_data);
+extern XLogReaderRoutine *LocalXLogReaderRoutine(void);
+
 /* Free an XLogReader */
 extern void XLogReaderFree(XLogReaderState *state);
 
@@ -398,7 +400,7 @@ extern bool DecodeXLogRecord(XLogReaderState *state,
 							 DecodedXLogRecord *decoded,
 							 XLogRecord *record,
 							 XLogRecPtr lsn,
-							 char **errormsg);
+							 char **errmsg);
 
 /*
  * Macros that provide access to parts of the record most recently returned by
@@ -431,10 +433,10 @@ extern FullTransactionId XLogRecGetFullXid(XLogReaderState *record);
 extern bool RestoreBlockImage(XLogReaderState *record, uint8 block_id, char *page);
 extern char *XLogRecGetBlockData(XLogReaderState *record, uint8 block_id, Size *len);
 extern void XLogRecGetBlockTag(XLogReaderState *record, uint8 block_id,
-							   RelFileLocator *rlocator, ForkNumber *forknum,
+							   RelFileNode *rnode, ForkNumber *forknum,
 							   BlockNumber *blknum);
 extern bool XLogRecGetBlockTagExtended(XLogReaderState *record, uint8 block_id,
-									   RelFileLocator *rlocator, ForkNumber *forknum,
+									   RelFileNode *rnode, ForkNumber *forknum,
 									   BlockNumber *blknum,
 									   Buffer *prefetch_buffer);
 

@@ -33,26 +33,20 @@ typedef char  mmChar ;
 
 #line 7 "type.pgc"
 
-typedef short  access ;
+typedef short  mmSmallInt ;
 
 #line 8 "type.pgc"
 
 #line 8 "type.pgc"
-	/* matches an unreserved SQL keyword */
-typedef access  access_renamed ;
-
-#line 9 "type.pgc"
-
-#line 9 "type.pgc"
 
 
 /* exec sql type string is char [ 11 ] */
-#line 11 "type.pgc"
+#line 10 "type.pgc"
 
 typedef char string[11];
 
 /* exec sql type c is char reference */
-#line 14 "type.pgc"
+#line 13 "type.pgc"
 
 typedef char* c;
 
@@ -64,16 +58,16 @@ typedef char* c;
    
 
 struct TBempl { 
-#line 20 "type.pgc"
+#line 19 "type.pgc"
  mmInteger idnum ;
  
-#line 21 "type.pgc"
+#line 20 "type.pgc"
  mmChar name [ 21 ] ;
  
-#line 22 "type.pgc"
- access accs ;
+#line 21 "type.pgc"
+ mmSmallInt accs ;
  } ;/* exec sql end declare section */
-#line 24 "type.pgc"
+#line 23 "type.pgc"
 
 
 int
@@ -83,45 +77,41 @@ main (void)
     
    
      
-     
    
   
 	 
 	 
    
   
-#line 30 "type.pgc"
+#line 29 "type.pgc"
  struct TBempl empl ;
  
-#line 31 "type.pgc"
+#line 30 "type.pgc"
  string str ;
  
-#line 32 "type.pgc"
- access accs_val = 320 ;
- 
-#line 33 "type.pgc"
+#line 31 "type.pgc"
  c ptr = NULL ;
  
-#line 38 "type.pgc"
- struct varchar { 
 #line 36 "type.pgc"
+ struct varchar { 
+#line 34 "type.pgc"
  int len ;
  
-#line 37 "type.pgc"
+#line 35 "type.pgc"
  char text [ 10 ] ;
  } vc ;
 /* exec sql end declare section */
-#line 39 "type.pgc"
+#line 37 "type.pgc"
 
 
   /* exec sql var vc is [ 10 ] */
-#line 41 "type.pgc"
+#line 39 "type.pgc"
 
   ECPGdebug (1, stderr);
 
   empl.idnum = 1;
   { ECPGconnect(__LINE__, 0, "ecpg1_regression" , NULL, NULL , NULL, 0); }
-#line 45 "type.pgc"
+#line 43 "type.pgc"
 
   if (sqlca.sqlcode)
     {
@@ -130,7 +120,7 @@ main (void)
     }
 
   { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "create table empl ( idnum integer , name char ( 20 ) , accs smallint , string1 char ( 10 ) , string2 char ( 10 ) , string3 char ( 10 ) )", ECPGt_EOIT, ECPGt_EORT);}
-#line 53 "type.pgc"
+#line 51 "type.pgc"
 
   if (sqlca.sqlcode)
     {
@@ -138,10 +128,8 @@ main (void)
       exit (sqlca.sqlcode);
     }
 
-  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "insert into empl values ( 1 , 'user name' , $1  , 'first str' , 'second str' , 'third str' )", 
-	ECPGt_short,&(accs_val),(long)1,(long)1,sizeof(short), 
-	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EOIT, ECPGt_EORT);}
-#line 60 "type.pgc"
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "insert into empl values ( 1 , 'user name' , 320 , 'first str' , 'second str' , 'third str' )", ECPGt_EOIT, ECPGt_EORT);}
+#line 58 "type.pgc"
 
   if (sqlca.sqlcode)
     {
@@ -164,7 +152,7 @@ main (void)
 	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, 
 	ECPGt_varchar,&(vc),(long)10,(long)1,sizeof(struct varchar), 
 	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EORT);}
-#line 70 "type.pgc"
+#line 68 "type.pgc"
 
   if (sqlca.sqlcode)
     {
@@ -174,7 +162,7 @@ main (void)
   printf ("id=%ld name='%s' accs=%d str='%s' ptr='%s' vc='%10.10s'\n", empl.idnum, empl.name, empl.accs, str, ptr, vc.text);
 
   { ECPGdisconnect(__LINE__, "CURRENT");}
-#line 78 "type.pgc"
+#line 76 "type.pgc"
 
 
   free(ptr);

@@ -3,7 +3,7 @@
  * partbounds.c
  *		Support routines for manipulating partition bounds
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -31,7 +31,6 @@
 #include "partitioning/partbounds.h"
 #include "partitioning/partdesc.h"
 #include "partitioning/partprune.h"
-#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
@@ -104,7 +103,7 @@ static PartitionBoundInfo create_list_bounds(PartitionBoundSpec **boundspecs,
 static PartitionBoundInfo create_range_bounds(PartitionBoundSpec **boundspecs,
 											  int nparts, PartitionKey key, int **mapping);
 static PartitionBoundInfo merge_list_bounds(FmgrInfo *partsupfunc,
-											Oid *partcollation,
+											Oid *collations,
 											RelOptInfo *outer_rel,
 											RelOptInfo *inner_rel,
 											JoinType jointype,
@@ -123,8 +122,8 @@ static void free_partition_map(PartitionMap *map);
 static bool is_dummy_partition(RelOptInfo *rel, int part_index);
 static int	merge_matching_partitions(PartitionMap *outer_map,
 									  PartitionMap *inner_map,
-									  int outer_index,
-									  int inner_index,
+									  int outer_part,
+									  int inner_part,
 									  int *next_index);
 static int	process_outer_partition(PartitionMap *outer_map,
 									PartitionMap *inner_map,
@@ -270,6 +269,10 @@ get_qual_from_partbound(Relation parent, PartitionBoundSpec *spec)
 			Assert(spec->strategy == PARTITION_STRATEGY_RANGE);
 			my_qual = get_qual_for_range(parent, spec, false);
 			break;
+
+		default:
+			elog(ERROR, "unexpected partition strategy: %d",
+				 (int) key->strategy);
 	}
 
 	return my_qual;
@@ -334,6 +337,11 @@ partition_bounds_create(PartitionBoundSpec **boundspecs, int nparts,
 
 		case PARTITION_STRATEGY_RANGE:
 			return create_range_bounds(boundspecs, nparts, key, mapping);
+
+		default:
+			elog(ERROR, "unexpected partition strategy: %d",
+				 (int) key->strategy);
+			break;
 	}
 
 	Assert(false);
@@ -531,7 +539,7 @@ create_list_bounds(PartitionBoundSpec **boundspecs, int nparts,
 	Assert(j == ndatums);
 
 	qsort_arg(all_values, ndatums, sizeof(PartitionListValue),
-			  qsort_partition_list_value_cmp, key);
+			  qsort_partition_list_value_cmp, (void *) key);
 
 	boundinfo->ndatums = ndatums;
 	boundinfo->datums = (Datum **) palloc0(ndatums * sizeof(Datum *));
@@ -737,7 +745,7 @@ create_range_bounds(PartitionBoundSpec **boundspecs, int nparts,
 	qsort_arg(all_bounds, ndatums,
 			  sizeof(PartitionRangeBound *),
 			  qsort_partition_rbound_cmp,
-			  key);
+			  (void *) key);
 
 	/* Save distinct bounds from all_bounds into rbounds. */
 	rbounds = (PartitionRangeBound **)
@@ -1172,9 +1180,12 @@ partition_bounds_merge(int partnatts,
 									  jointype,
 									  outer_parts,
 									  inner_parts);
-	}
 
-	return NULL;
+		default:
+			elog(ERROR, "unexpected partition strategy: %d",
+				 (int) outer_rel->boundinfo->strategy);
+			return NULL;		/* keep compiler quiet */
+	}
 }
 
 /*
@@ -2880,7 +2891,8 @@ partitions_are_ordered(PartitionBoundInfo boundinfo, Bitmapset *live_parts)
 				return true;
 
 			break;
-		case PARTITION_STRATEGY_HASH:
+		default:
+			/* HASH, or some other strategy */
 			break;
 	}
 
@@ -3193,7 +3205,7 @@ check_new_partition_bound(char *relname, Relation parent,
 								 * datums list.
 								 */
 								PartitionRangeDatum *datum =
-								list_nth(spec->upperdatums, abs(cmpval) - 1);
+								list_nth(spec->upperdatums, Abs(cmpval) - 1);
 
 								/*
 								 * The new partition overlaps with the
@@ -3219,7 +3231,7 @@ check_new_partition_bound(char *relname, Relation parent,
 						 * if we have equality, point to the first one.
 						 */
 						datum = cmpval == 0 ? linitial(spec->lowerdatums) :
-							list_nth(spec->lowerdatums, abs(cmpval) - 1);
+							list_nth(spec->lowerdatums, Abs(cmpval) - 1);
 						overlap = true;
 						overlap_location = datum->location;
 						with = boundinfo->indexes[offset + 1];
@@ -3228,6 +3240,10 @@ check_new_partition_bound(char *relname, Relation parent,
 
 				break;
 			}
+
+		default:
+			elog(ERROR, "unexpected partition strategy: %d",
+				 (int) key->strategy);
 	}
 
 	if (overlap)
@@ -3963,8 +3979,8 @@ make_partition_op_expr(PartitionKey key, int keynum,
 								   key->partcollation[keynum]);
 			break;
 
-		case PARTITION_STRATEGY_HASH:
-			Assert(false);
+		default:
+			elog(ERROR, "invalid partitioning strategy");
 			break;
 	}
 
@@ -4304,21 +4320,26 @@ get_qual_for_range(Relation parent, PartitionBoundSpec *spec,
 		PartitionDesc pdesc = RelationGetPartitionDesc(parent, false);
 		Oid		   *inhoids = pdesc->oids;
 		int			nparts = pdesc->nparts,
-					k;
+					i;
 
-		for (k = 0; k < nparts; k++)
+		for (i = 0; i < nparts; i++)
 		{
-			Oid			inhrelid = inhoids[k];
+			Oid			inhrelid = inhoids[i];
 			HeapTuple	tuple;
 			Datum		datum;
+			bool		isnull;
 			PartitionBoundSpec *bspec;
 
 			tuple = SearchSysCache1(RELOID, inhrelid);
 			if (!HeapTupleIsValid(tuple))
 				elog(ERROR, "cache lookup failed for relation %u", inhrelid);
 
-			datum = SysCacheGetAttrNotNull(RELOID, tuple,
-										   Anum_pg_class_relpartbound);
+			datum = SysCacheGetAttr(RELOID, tuple,
+									Anum_pg_class_relpartbound,
+									&isnull);
+			if (isnull)
+				elog(ERROR, "null relpartbound for relation %u", inhrelid);
+
 			bspec = (PartitionBoundSpec *)
 				stringToNode(TextDatumGetCString(datum));
 			if (!IsA(bspec, PartitionBoundSpec))

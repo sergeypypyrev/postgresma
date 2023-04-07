@@ -4,7 +4,7 @@
  *	  various support functions for SP-GiST
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -62,7 +62,6 @@ spghandler(PG_FUNCTION_ARGS)
 	amroutine->amcanparallel = false;
 	amroutine->amcaninclude = true;
 	amroutine->amusemaintenanceworkmem = false;
-	amroutine->amsummarizing = false;
 	amroutine->amparallelvacuumoptions =
 		VACUUM_OPTION_PARALLEL_BULKDEL | VACUUM_OPTION_PARALLEL_COND_CLEANUP;
 	amroutine->amkeytype = InvalidOid;

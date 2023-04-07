@@ -4,7 +4,7 @@
  *
  * Routines to handle DML permission checks
  *
- * Copyright (c) 2010-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * -------------------------------------------------------------------------
  */
@@ -23,7 +23,6 @@
 #include "commands/tablecmds.h"
 #include "executor/executor.h"
 #include "nodes/bitmapset.h"
-#include "parser/parsetree.h"
 #include "sepgsql.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
@@ -84,7 +83,7 @@ fixup_whole_row_references(Oid relOid, Bitmapset *columns)
  *
  * When user is querying on a table with children, it implicitly accesses
  * child tables also. So, we also need to check security label of child
- * tables and columns, but there is no guarantee attribute numbers are
+ * tables and columns, but here is no guarantee attribute numbers are
  * same between the parent and children.
  * It returns a bitmapset which contains attribute number of the child
  * table based on the given bitmapset of the parent.
@@ -231,8 +230,7 @@ check_relation_privileges(Oid relOid,
 	updated = fixup_whole_row_references(relOid, updated);
 	columns = bms_union(selected, bms_union(inserted, updated));
 
-	index = -1;
-	while ((index = bms_next_member(columns, index)) >= 0)
+	while ((index = bms_first_member(columns)) >= 0)
 	{
 		AttrNumber	attnum;
 		uint32		column_perms = 0;
@@ -279,33 +277,38 @@ check_relation_privileges(Oid relOid,
  * Entrypoint of the DML permission checks
  */
 bool
-sepgsql_dml_privileges(List *rangeTbls, List *rteperminfos,
-					   bool abort_on_violation)
+sepgsql_dml_privileges(List *rangeTabls, bool abort_on_violation)
 {
 	ListCell   *lr;
 
-	foreach(lr, rteperminfos)
+	foreach(lr, rangeTabls)
 	{
-		RTEPermissionInfo *perminfo = lfirst_node(RTEPermissionInfo, lr);
+		RangeTblEntry *rte = lfirst(lr);
 		uint32		required = 0;
 		List	   *tableIds;
 		ListCell   *li;
 
 		/*
+		 * Only regular relations shall be checked
+		 */
+		if (rte->rtekind != RTE_RELATION)
+			continue;
+
+		/*
 		 * Find out required permissions
 		 */
-		if (perminfo->requiredPerms & ACL_SELECT)
+		if (rte->requiredPerms & ACL_SELECT)
 			required |= SEPG_DB_TABLE__SELECT;
-		if (perminfo->requiredPerms & ACL_INSERT)
+		if (rte->requiredPerms & ACL_INSERT)
 			required |= SEPG_DB_TABLE__INSERT;
-		if (perminfo->requiredPerms & ACL_UPDATE)
+		if (rte->requiredPerms & ACL_UPDATE)
 		{
-			if (!bms_is_empty(perminfo->updatedCols))
+			if (!bms_is_empty(rte->updatedCols))
 				required |= SEPG_DB_TABLE__UPDATE;
 			else
 				required |= SEPG_DB_TABLE__LOCK;
 		}
-		if (perminfo->requiredPerms & ACL_DELETE)
+		if (rte->requiredPerms & ACL_DELETE)
 			required |= SEPG_DB_TABLE__DELETE;
 
 		/*
@@ -320,10 +323,10 @@ sepgsql_dml_privileges(List *rangeTbls, List *rteperminfos,
 		 * expand rte->relid into list of OIDs of inheritance hierarchy, then
 		 * checker routine will be invoked for each relations.
 		 */
-		if (!perminfo->inh)
-			tableIds = list_make1_oid(perminfo->relid);
+		if (!rte->inh)
+			tableIds = list_make1_oid(rte->relid);
 		else
-			tableIds = find_all_inheritors(perminfo->relid, NoLock, NULL);
+			tableIds = find_all_inheritors(rte->relid, NoLock, NULL);
 
 		foreach(li, tableIds)
 		{
@@ -336,12 +339,12 @@ sepgsql_dml_privileges(List *rangeTbls, List *rteperminfos,
 			 * child table has different attribute numbers, so we need to fix
 			 * up them.
 			 */
-			selectedCols = fixup_inherited_columns(perminfo->relid, tableOid,
-												   perminfo->selectedCols);
-			insertedCols = fixup_inherited_columns(perminfo->relid, tableOid,
-												   perminfo->insertedCols);
-			updatedCols = fixup_inherited_columns(perminfo->relid, tableOid,
-												  perminfo->updatedCols);
+			selectedCols = fixup_inherited_columns(rte->relid, tableOid,
+												   rte->selectedCols);
+			insertedCols = fixup_inherited_columns(rte->relid, tableOid,
+												   rte->insertedCols);
+			updatedCols = fixup_inherited_columns(rte->relid, tableOid,
+												  rte->updatedCols);
 
 			/*
 			 * check permissions on individual tables

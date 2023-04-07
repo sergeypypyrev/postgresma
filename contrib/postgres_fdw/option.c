@@ -3,7 +3,7 @@
  * option.c
  *		  FDW and GUC option handling for postgres_fdw
  *
- * Portions Copyright (c) 2012-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/postgres_fdw/option.c
@@ -51,6 +51,8 @@ static PQconninfoOption *libpq_options;
  */
 char	   *pgfdw_application_name = NULL;
 
+void		_PG_init(void);
+
 /*
  * Helper functions
  */
@@ -90,31 +92,26 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 		{
 			/*
 			 * Unknown option specified, complain about it. Provide a hint
-			 * with a valid option that looks similar, if there is one.
+			 * with list of valid options for the object.
 			 */
 			PgFdwOption *opt;
-			const char *closest_match;
-			ClosestMatchState match_state;
-			bool		has_valid_options = false;
+			StringInfoData buf;
 
-			initClosestMatch(&match_state, def->defname, 4);
+			initStringInfo(&buf);
 			for (opt = postgres_fdw_options; opt->keyword; opt++)
 			{
 				if (catalog == opt->optcontext)
-				{
-					has_valid_options = true;
-					updateClosestMatch(&match_state, opt->keyword);
-				}
+					appendStringInfo(&buf, "%s%s", (buf.len > 0) ? ", " : "",
+									 opt->keyword);
 			}
 
-			closest_match = getClosestMatch(&match_state);
 			ereport(ERROR,
 					(errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
 					 errmsg("invalid option \"%s\"", def->defname),
-					 has_valid_options ? closest_match ?
-					 errhint("Perhaps you meant the option \"%s\".",
-							 closest_match) : 0 :
-					 errhint("There are no valid options in this context.")));
+					 buf.len > 0
+					 ? errhint("Valid options in this context are: %s",
+							   buf.data)
+					 : errhint("There are no valid options in this context.")));
 		}
 
 		/*
@@ -210,23 +207,6 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 						 errmsg("sslcert and sslkey are superuser-only"),
 						 errhint("User mappings with the sslcert or sslkey options set may only be created or modified by the superuser.")));
 		}
-		else if (strcmp(def->defname, "analyze_sampling") == 0)
-		{
-			char	   *value;
-
-			value = defGetString(def);
-
-			/* we recognize off/auto/random/system/bernoulli */
-			if (strcmp(value, "off") != 0 &&
-				strcmp(value, "auto") != 0 &&
-				strcmp(value, "random") != 0 &&
-				strcmp(value, "system") != 0 &&
-				strcmp(value, "bernoulli") != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("invalid value for string option \"%s\": %s",
-								def->defname, value)));
-		}
 	}
 
 	PG_RETURN_VOID();
@@ -273,10 +253,6 @@ InitPgFdwOptions(void)
 		{"parallel_commit", ForeignServerRelationId, false},
 		{"keep_connections", ForeignServerRelationId, false},
 		{"password_required", UserMappingRelationId, false},
-
-		/* sampling is available on both server and table */
-		{"analyze_sampling", ForeignServerRelationId, false},
-		{"analyze_sampling", ForeignTableRelationId, false},
 
 		/*
 		 * sslcert and sslkey are in fact libpq options, but we repeat them
@@ -485,6 +461,8 @@ process_pgfdw_appname(const char *appname)
 	const char *p;
 	StringInfoData buf;
 
+	Assert(MyProcPort != NULL);
+
 	initStringInfo(&buf);
 
 	for (p = appname; *p != '\0'; p++)
@@ -520,29 +498,13 @@ process_pgfdw_appname(const char *appname)
 				appendStringInfoString(&buf, cluster_name);
 				break;
 			case 'd':
-				if (MyProcPort)
-				{
-					const char *dbname = MyProcPort->database_name;
-
-					if (dbname)
-						appendStringInfoString(&buf, dbname);
-					else
-						appendStringInfoString(&buf, "[unknown]");
-				}
+				appendStringInfoString(&buf, MyProcPort->database_name);
 				break;
 			case 'p':
 				appendStringInfo(&buf, "%d", MyProcPid);
 				break;
 			case 'u':
-				if (MyProcPort)
-				{
-					const char *username = MyProcPort->user_name;
-
-					if (username)
-						appendStringInfoString(&buf, username);
-					else
-						appendStringInfoString(&buf, "[unknown]");
-				}
+				appendStringInfoString(&buf, MyProcPort->user_name);
 				break;
 			default:
 				/* format error - ignore it */

@@ -3,7 +3,7 @@
  * hashpage.c
  *	  Hash table page management code for the Postgres hash access method
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -428,7 +428,7 @@ _hash_init(Relation rel, double num_tuples, ForkNumber forkNum)
 		MarkBufferDirty(buf);
 
 		if (use_wal)
-			log_newpage(&rel->rd_locator,
+			log_newpage(&rel->rd_node,
 						forkNum,
 						blkno,
 						BufferGetPage(buf),
@@ -1023,7 +1023,7 @@ _hash_alloc_buckets(Relation rel, BlockNumber firstblock, uint32 nblocks)
 	ovflopaque->hasho_page_id = HASHO_PAGE_ID;
 
 	if (RelationNeedsWAL(rel))
-		log_newpage(&rel->rd_locator,
+		log_newpage(&rel->rd_node,
 					MAIN_FORKNUM,
 					lastblock,
 					zerobuf.data,

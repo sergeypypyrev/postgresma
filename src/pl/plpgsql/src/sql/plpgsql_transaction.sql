@@ -481,7 +481,8 @@ BEGIN
     PERFORM 1;
     RAISE INFO '%', current_setting('transaction_isolation');
     COMMIT;
-    SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+    SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    RESET TRANSACTION ISOLATION LEVEL;
     PERFORM 1;
     RAISE INFO '%', current_setting('transaction_isolation');
     COMMIT;

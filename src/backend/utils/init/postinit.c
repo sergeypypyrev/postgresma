@@ -3,7 +3,7 @@
  * postinit.c
  *	  postgres initialization utilities
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -58,7 +58,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
-#include "utils/guc_hooks.h"
+#include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
 #include "utils/portal.h"
@@ -217,8 +217,7 @@ PerformAuthentication(Port *port)
 		 * since there is no way to connect to the database in this case.
 		 */
 		ereport(FATAL,
-		/* translator: %s is a configuration file */
-				(errmsg("could not load %s", HbaFileName)));
+				(errmsg("could not load pg_hba.conf")));
 	}
 
 	if (!load_ident())
@@ -359,7 +358,7 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 		 * and save a few cycles.)
 		 */
 		if (!am_superuser &&
-			object_aclcheck(DatabaseRelationId, MyDatabaseId, GetUserId(),
+			pg_database_aclcheck(MyDatabaseId, GetUserId(),
 								 ACL_CONNECT) != ACLCHECK_OK)
 			ereport(FATAL,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
@@ -398,9 +397,11 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 					PGC_BACKEND, PGC_S_DYNAMIC_DEFAULT);
 
 	/* assign locale variables */
-	datum = SysCacheGetAttrNotNull(DATABASEOID, tup, Anum_pg_database_datcollate);
+	datum = SysCacheGetAttr(DATABASEOID, tup, Anum_pg_database_datcollate, &isnull);
+	Assert(!isnull);
 	collate = TextDatumGetCString(datum);
-	datum = SysCacheGetAttrNotNull(DATABASEOID, tup, Anum_pg_database_datctype);
+	datum = SysCacheGetAttr(DATABASEOID, tup, Anum_pg_database_datctype, &isnull);
+	Assert(!isnull);
 	ctype = TextDatumGetCString(datum);
 
 	if (pg_perm_setlocale(LC_COLLATE, collate) == NULL)
@@ -417,24 +418,12 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 						   " which is not recognized by setlocale().", ctype),
 				 errhint("Recreate the database with another locale or install the missing locale.")));
 
-	if (strcmp(ctype, "C") == 0 ||
-		strcmp(ctype, "POSIX") == 0)
-		database_ctype_is_c = true;
-
 	if (dbform->datlocprovider == COLLPROVIDER_ICU)
 	{
-		char	   *icurules;
-
-		datum = SysCacheGetAttrNotNull(DATABASEOID, tup, Anum_pg_database_daticulocale);
+		datum = SysCacheGetAttr(DATABASEOID, tup, Anum_pg_database_daticulocale, &isnull);
+		Assert(!isnull);
 		iculocale = TextDatumGetCString(datum);
-
-		datum = SysCacheGetAttr(DATABASEOID, tup, Anum_pg_database_daticurules, &isnull);
-		if (!isnull)
-			icurules = TextDatumGetCString(datum);
-		else
-			icurules = NULL;
-
-		make_icu_collator(iculocale, icurules, &default_locale);
+		make_icu_collator(iculocale, &default_locale);
 	}
 	else
 		iculocale = NULL;
@@ -574,54 +563,6 @@ InitializeMaxBackends(void)
 }
 
 /*
- * GUC check_hook for max_connections
- */
-bool
-check_max_connections(int *newval, void **extra, GucSource source)
-{
-	if (*newval + autovacuum_max_workers + 1 +
-		max_worker_processes + max_wal_senders > MAX_BACKENDS)
-		return false;
-	return true;
-}
-
-/*
- * GUC check_hook for autovacuum_max_workers
- */
-bool
-check_autovacuum_max_workers(int *newval, void **extra, GucSource source)
-{
-	if (MaxConnections + *newval + 1 +
-		max_worker_processes + max_wal_senders > MAX_BACKENDS)
-		return false;
-	return true;
-}
-
-/*
- * GUC check_hook for max_worker_processes
- */
-bool
-check_max_worker_processes(int *newval, void **extra, GucSource source)
-{
-	if (MaxConnections + autovacuum_max_workers + 1 +
-		*newval + max_wal_senders > MAX_BACKENDS)
-		return false;
-	return true;
-}
-
-/*
- * GUC check_hook for max_wal_senders
- */
-bool
-check_max_wal_senders(int *newval, void **extra, GucSource source)
-{
-	if (MaxConnections + autovacuum_max_workers + 1 +
-		max_worker_processes + *newval > MAX_BACKENDS)
-		return false;
-	return true;
-}
-
-/*
  * Early initialization of a backend (either standalone or under postmaster).
  * This happens even before InitPostgres.
  *
@@ -729,7 +670,6 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	bool		am_superuser;
 	char	   *fullpath;
 	char		dbname[NAMEDATALEN];
-	int			nfree = 0;
 
 	elog(DEBUG3, "InitPostgres");
 
@@ -915,10 +855,6 @@ InitPostgres(const char *in_dbname, Oid dboid,
 		Assert(MyProcPort != NULL);
 		PerformAuthentication(MyProcPort);
 		InitializeSessionUserId(username, useroid);
-		/* ensure that auth_method is actually valid, aka authn_id is not NULL */
-		if (MyClientConnectionInfo.authn_id)
-			InitializeSystemUser(MyClientConnectionInfo.authn_id,
-								 hba_authname(MyClientConnectionInfo.auth_method));
 		am_superuser = superuser();
 	}
 
@@ -933,44 +869,26 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	}
 
 	/*
-	 * The last few connection slots are reserved for superusers and roles with
-	 * privileges of pg_use_reserved_connections.  Replication connections are
-	 * drawn from slots reserved with max_wal_senders and are not limited by
-	 * max_connections, superuser_reserved_connections, or
-	 * reserved_connections.
-	 *
-	 * Note: At this point, the new backend has already claimed a proc struct,
-	 * so we must check whether the number of free slots is strictly less than
-	 * the reserved connection limits.
+	 * The last few connection slots are reserved for superusers.  Replication
+	 * connections are drawn from slots reserved with max_wal_senders and not
+	 * limited by max_connections or superuser_reserved_connections.
 	 */
 	if (!am_superuser && !am_walsender &&
-		(SuperuserReservedConnections + ReservedConnections) > 0 &&
-		!HaveNFreeProcs(SuperuserReservedConnections + ReservedConnections, &nfree))
-	{
-		if (nfree < SuperuserReservedConnections)
-			ereport(FATAL,
-					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
-					 errmsg("remaining connection slots are reserved for roles with %s",
-							"SUPERUSER")));
-
-		if (!has_privs_of_role(GetUserId(), ROLE_PG_USE_RESERVED_CONNECTIONS))
-			ereport(FATAL,
-					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
-					 errmsg("remaining connection slots are reserved for roles with privileges of the \"%s\" role",
-							"pg_use_reserved_connections")));
-	}
+		ReservedBackends > 0 &&
+		!HaveNFreeProcs(ReservedBackends))
+		ereport(FATAL,
+				(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
+				 errmsg("remaining connection slots are reserved for non-replication superuser connections")));
 
 	/* Check replication permissions needed for walsender processes. */
 	if (am_walsender)
 	{
 		Assert(!bootstrap);
 
-		if (!has_rolreplication(GetUserId()))
+		if (!superuser() && !has_rolreplication(GetUserId()))
 			ereport(FATAL,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("permission denied to start WAL sender"),
-					 errdetail("Only roles with the %s attribute may start a WAL sender process.",
-							   "REPLICATION")));
+					 errmsg("must be superuser or replication role to start walsender")));
 	}
 
 	/*

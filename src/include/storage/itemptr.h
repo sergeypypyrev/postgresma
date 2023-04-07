@@ -4,7 +4,7 @@
  *	  POSTGRES disk item pointer definitions.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/itemptr.h
@@ -71,7 +71,7 @@ typedef ItemPointerData *ItemPointer;
 
 
 /* ----------------
- *		support functions
+ *		support macros
  * ----------------
  */
 
@@ -79,87 +79,77 @@ typedef ItemPointerData *ItemPointer;
  * ItemPointerIsValid
  *		True iff the disk item pointer is not NULL.
  */
-static inline bool
-ItemPointerIsValid(const ItemPointerData *pointer)
-{
-	return PointerIsValid(pointer) && pointer->ip_posid != 0;
-}
+#define ItemPointerIsValid(pointer) \
+	((bool) (PointerIsValid(pointer) && ((pointer)->ip_posid != 0)))
 
 /*
  * ItemPointerGetBlockNumberNoCheck
  *		Returns the block number of a disk item pointer.
  */
-static inline BlockNumber
-ItemPointerGetBlockNumberNoCheck(const ItemPointerData *pointer)
-{
-	return BlockIdGetBlockNumber(&pointer->ip_blkid);
-}
+#define ItemPointerGetBlockNumberNoCheck(pointer) \
+( \
+	BlockIdGetBlockNumber(&(pointer)->ip_blkid) \
+)
 
 /*
  * ItemPointerGetBlockNumber
  *		As above, but verifies that the item pointer looks valid.
  */
-static inline BlockNumber
-ItemPointerGetBlockNumber(const ItemPointerData *pointer)
-{
-	Assert(ItemPointerIsValid(pointer));
-	return ItemPointerGetBlockNumberNoCheck(pointer);
-}
+#define ItemPointerGetBlockNumber(pointer) \
+( \
+	AssertMacro(ItemPointerIsValid(pointer)), \
+	ItemPointerGetBlockNumberNoCheck(pointer) \
+)
 
 /*
  * ItemPointerGetOffsetNumberNoCheck
  *		Returns the offset number of a disk item pointer.
  */
-static inline OffsetNumber
-ItemPointerGetOffsetNumberNoCheck(const ItemPointerData *pointer)
-{
-	return pointer->ip_posid;
-}
+#define ItemPointerGetOffsetNumberNoCheck(pointer) \
+( \
+	(pointer)->ip_posid \
+)
 
 /*
  * ItemPointerGetOffsetNumber
  *		As above, but verifies that the item pointer looks valid.
  */
-static inline OffsetNumber
-ItemPointerGetOffsetNumber(const ItemPointerData *pointer)
-{
-	Assert(ItemPointerIsValid(pointer));
-	return ItemPointerGetOffsetNumberNoCheck(pointer);
-}
+#define ItemPointerGetOffsetNumber(pointer) \
+( \
+	AssertMacro(ItemPointerIsValid(pointer)), \
+	ItemPointerGetOffsetNumberNoCheck(pointer) \
+)
 
 /*
  * ItemPointerSet
  *		Sets a disk item pointer to the specified block and offset.
  */
-static inline void
-ItemPointerSet(ItemPointerData *pointer, BlockNumber blockNumber, OffsetNumber offNum)
-{
-	Assert(PointerIsValid(pointer));
-	BlockIdSet(&pointer->ip_blkid, blockNumber);
-	pointer->ip_posid = offNum;
-}
+#define ItemPointerSet(pointer, blockNumber, offNum) \
+( \
+	AssertMacro(PointerIsValid(pointer)), \
+	BlockIdSet(&((pointer)->ip_blkid), blockNumber), \
+	(pointer)->ip_posid = offNum \
+)
 
 /*
  * ItemPointerSetBlockNumber
  *		Sets a disk item pointer to the specified block.
  */
-static inline void
-ItemPointerSetBlockNumber(ItemPointerData *pointer, BlockNumber blockNumber)
-{
-	Assert(PointerIsValid(pointer));
-	BlockIdSet(&pointer->ip_blkid, blockNumber);
-}
+#define ItemPointerSetBlockNumber(pointer, blockNumber) \
+( \
+	AssertMacro(PointerIsValid(pointer)), \
+	BlockIdSet(&((pointer)->ip_blkid), blockNumber) \
+)
 
 /*
  * ItemPointerSetOffsetNumber
  *		Sets a disk item pointer to the specified offset.
  */
-static inline void
-ItemPointerSetOffsetNumber(ItemPointerData *pointer, OffsetNumber offsetNumber)
-{
-	Assert(PointerIsValid(pointer));
-	pointer->ip_posid = offsetNumber;
-}
+#define ItemPointerSetOffsetNumber(pointer, offsetNumber) \
+( \
+	AssertMacro(PointerIsValid(pointer)), \
+	(pointer)->ip_posid = (offsetNumber) \
+)
 
 /*
  * ItemPointerCopy
@@ -168,49 +158,42 @@ ItemPointerSetOffsetNumber(ItemPointerData *pointer, OffsetNumber offsetNumber)
  * Should there ever be padding in an ItemPointer this would need to be handled
  * differently as it's used as hash key.
  */
-static inline void
-ItemPointerCopy(const ItemPointerData *fromPointer, ItemPointerData *toPointer)
-{
-	Assert(PointerIsValid(toPointer));
-	Assert(PointerIsValid(fromPointer));
-	*toPointer = *fromPointer;
-}
+#define ItemPointerCopy(fromPointer, toPointer) \
+( \
+	AssertMacro(PointerIsValid(toPointer)), \
+	AssertMacro(PointerIsValid(fromPointer)), \
+	*(toPointer) = *(fromPointer) \
+)
 
 /*
  * ItemPointerSetInvalid
  *		Sets a disk item pointer to be invalid.
  */
-static inline void
-ItemPointerSetInvalid(ItemPointerData *pointer)
-{
-	Assert(PointerIsValid(pointer));
-	BlockIdSet(&pointer->ip_blkid, InvalidBlockNumber);
-	pointer->ip_posid = InvalidOffsetNumber;
-}
+#define ItemPointerSetInvalid(pointer) \
+( \
+	AssertMacro(PointerIsValid(pointer)), \
+	BlockIdSet(&((pointer)->ip_blkid), InvalidBlockNumber), \
+	(pointer)->ip_posid = InvalidOffsetNumber \
+)
 
 /*
  * ItemPointerIndicatesMovedPartitions
  *		True iff the block number indicates the tuple has moved to another
  *		partition.
  */
-static inline bool
-ItemPointerIndicatesMovedPartitions(const ItemPointerData *pointer)
-{
-	return
-		ItemPointerGetOffsetNumber(pointer) == MovedPartitionsOffsetNumber &&
-		ItemPointerGetBlockNumberNoCheck(pointer) == MovedPartitionsBlockNumber;
-}
+#define ItemPointerIndicatesMovedPartitions(pointer) \
+( \
+	ItemPointerGetOffsetNumber(pointer) == MovedPartitionsOffsetNumber && \
+	ItemPointerGetBlockNumberNoCheck(pointer) == MovedPartitionsBlockNumber \
+)
 
 /*
  * ItemPointerSetMovedPartitions
  *		Indicate that the item referenced by the itempointer has moved into a
  *		different partition.
  */
-static inline void
-ItemPointerSetMovedPartitions(ItemPointerData *pointer)
-{
-	ItemPointerSet(pointer, MovedPartitionsBlockNumber, MovedPartitionsOffsetNumber);
-}
+#define ItemPointerSetMovedPartitions(pointer) \
+	ItemPointerSet((pointer), MovedPartitionsBlockNumber, MovedPartitionsOffsetNumber)
 
 /* ----------------
  *		externs
@@ -221,25 +204,5 @@ extern bool ItemPointerEquals(ItemPointer pointer1, ItemPointer pointer2);
 extern int32 ItemPointerCompare(ItemPointer arg1, ItemPointer arg2);
 extern void ItemPointerInc(ItemPointer pointer);
 extern void ItemPointerDec(ItemPointer pointer);
-
-/* ----------------
- *		Datum conversion functions
- * ----------------
- */
-
-static inline ItemPointer
-DatumGetItemPointer(Datum X)
-{
-	return (ItemPointer) DatumGetPointer(X);
-}
-
-static inline Datum
-ItemPointerGetDatum(const ItemPointerData *X)
-{
-	return PointerGetDatum(X);
-}
-
-#define PG_GETARG_ITEMPOINTER(n) DatumGetItemPointer(PG_GETARG_DATUM(n))
-#define PG_RETURN_ITEMPOINTER(x) return ItemPointerGetDatum(x)
 
 #endif							/* ITEMPTR_H */

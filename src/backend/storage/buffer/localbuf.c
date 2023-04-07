@@ -4,7 +4,7 @@
  *	  local buffer manager. Fast buffer manager for temporary tables,
  *	  which never need to be WAL-logged or checkpointed, etc.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  *
@@ -18,10 +18,9 @@
 #include "access/parallel.h"
 #include "catalog/catalog.h"
 #include "executor/instrument.h"
-#include "pgstat.h"
 #include "storage/buf_internals.h"
 #include "storage/bufmgr.h"
-#include "utils/guc_hooks.h"
+#include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/resowner_private.h"
 
@@ -69,7 +68,7 @@ PrefetchLocalBuffer(SMgrRelation smgr, ForkNumber forkNum,
 	BufferTag	newTag;			/* identity of requested block */
 	LocalBufferLookupEnt *hresult;
 
-	InitBufferTag(&newTag, &smgr->smgr_rlocator.locator, forkNum, blockNum);
+	INIT_BUFFERTAG(newTag, smgr->smgr_rnode.node, forkNum, blockNum);
 
 	/* Initialize local buffers if first request in this session */
 	if (LocalBufHash == NULL)
@@ -77,7 +76,7 @@ PrefetchLocalBuffer(SMgrRelation smgr, ForkNumber forkNum,
 
 	/* See if the desired buffer already exists */
 	hresult = (LocalBufferLookupEnt *)
-		hash_search(LocalBufHash, &newTag, HASH_FIND, NULL);
+		hash_search(LocalBufHash, (void *) &newTag, HASH_FIND, NULL);
 
 	if (hresult)
 	{
@@ -118,7 +117,7 @@ LocalBufferAlloc(SMgrRelation smgr, ForkNumber forkNum, BlockNumber blockNum,
 	bool		found;
 	uint32		buf_state;
 
-	InitBufferTag(&newTag, &smgr->smgr_rlocator.locator, forkNum, blockNum);
+	INIT_BUFFERTAG(newTag, smgr->smgr_rnode.node, forkNum, blockNum);
 
 	/* Initialize local buffers if first request in this session */
 	if (LocalBufHash == NULL)
@@ -126,16 +125,16 @@ LocalBufferAlloc(SMgrRelation smgr, ForkNumber forkNum, BlockNumber blockNum,
 
 	/* See if the desired buffer already exists */
 	hresult = (LocalBufferLookupEnt *)
-		hash_search(LocalBufHash, &newTag, HASH_FIND, NULL);
+		hash_search(LocalBufHash, (void *) &newTag, HASH_FIND, NULL);
 
 	if (hresult)
 	{
 		b = hresult->id;
 		bufHdr = GetLocalBufferDescriptor(b);
-		Assert(BufferTagsEqual(&bufHdr->tag, &newTag));
+		Assert(BUFFERTAGS_EQUAL(bufHdr->tag, newTag));
 #ifdef LBDEBUG
 		fprintf(stderr, "LB ALLOC (%u,%d,%d) %d\n",
-				smgr->smgr_rlocator.locator.relNumber, forkNum, blockNum, -b - 1);
+				smgr->smgr_rnode.node.relNode, forkNum, blockNum, -b - 1);
 #endif
 		buf_state = pg_atomic_read_u32(&bufHdr->state);
 
@@ -163,7 +162,7 @@ LocalBufferAlloc(SMgrRelation smgr, ForkNumber forkNum, BlockNumber blockNum,
 
 #ifdef LBDEBUG
 	fprintf(stderr, "LB ALLOC (%u,%d,%d) %d\n",
-			smgr->smgr_rlocator.locator.relNumber, forkNum, blockNum,
+			smgr->smgr_rnode.node.relNode, forkNum, blockNum,
 			-nextFreeLocalBuf - 1);
 #endif
 
@@ -216,13 +215,13 @@ LocalBufferAlloc(SMgrRelation smgr, ForkNumber forkNum, BlockNumber blockNum,
 		Page		localpage = (char *) LocalBufHdrGetBlock(bufHdr);
 
 		/* Find smgr relation for buffer */
-		oreln = smgropen(BufTagGetRelFileLocator(&bufHdr->tag), MyBackendId);
+		oreln = smgropen(bufHdr->tag.rnode, MyBackendId);
 
 		PageSetChecksumInplace(localpage, bufHdr->tag.blockNum);
 
 		/* And write... */
 		smgrwrite(oreln,
-				  BufTagGetForkNum(&bufHdr->tag),
+				  bufHdr->tag.forkNum,
 				  bufHdr->tag.blockNum,
 				  localpage,
 				  false);
@@ -231,8 +230,6 @@ LocalBufferAlloc(SMgrRelation smgr, ForkNumber forkNum, BlockNumber blockNum,
 		buf_state &= ~BM_DIRTY;
 		pg_atomic_unlocked_write_u32(&bufHdr->state, buf_state);
 
-		/* Temporary table I/O does not use Buffer Access Strategies */
-		pgstat_count_io_op(IOOBJECT_TEMP_RELATION, IOCONTEXT_NORMAL, IOOP_WRITE);
 		pgBufferUsage.local_blks_written++;
 	}
 
@@ -251,18 +248,18 @@ LocalBufferAlloc(SMgrRelation smgr, ForkNumber forkNum, BlockNumber blockNum,
 	if (buf_state & BM_TAG_VALID)
 	{
 		hresult = (LocalBufferLookupEnt *)
-			hash_search(LocalBufHash, &bufHdr->tag, HASH_REMOVE, NULL);
+			hash_search(LocalBufHash, (void *) &bufHdr->tag,
+						HASH_REMOVE, NULL);
 		if (!hresult)			/* shouldn't happen */
 			elog(ERROR, "local buffer hash table corrupted");
 		/* mark buffer invalid just in case hash insert fails */
-		ClearBufferTag(&bufHdr->tag);
+		CLEAR_BUFFERTAG(bufHdr->tag);
 		buf_state &= ~(BM_VALID | BM_TAG_VALID);
 		pg_atomic_unlocked_write_u32(&bufHdr->state, buf_state);
-		pgstat_count_io_op(IOOBJECT_TEMP_RELATION, IOCONTEXT_NORMAL, IOOP_EVICT);
 	}
 
 	hresult = (LocalBufferLookupEnt *)
-		hash_search(LocalBufHash, &newTag, HASH_ENTER, &found);
+		hash_search(LocalBufHash, (void *) &newTag, HASH_ENTER, &found);
 	if (found)					/* shouldn't happen */
 		elog(ERROR, "local buffer hash table corrupted");
 	hresult->id = b;
@@ -298,7 +295,7 @@ MarkLocalBufferDirty(Buffer buffer)
 	fprintf(stderr, "LB DIRTY %d\n", buffer);
 #endif
 
-	bufid = -buffer - 1;
+	bufid = -(buffer + 1);
 
 	Assert(LocalRefCount[bufid] > 0);
 
@@ -315,7 +312,7 @@ MarkLocalBufferDirty(Buffer buffer)
 }
 
 /*
- * DropRelationLocalBuffers
+ * DropRelFileNodeLocalBuffers
  *		This function removes from the buffer pool all the pages of the
  *		specified relation that have block numbers >= firstDelBlock.
  *		(In particular, with firstDelBlock = 0, all pages are removed.)
@@ -323,11 +320,11 @@ MarkLocalBufferDirty(Buffer buffer)
  *		out first.  Therefore, this is NOT rollback-able, and so should be
  *		used only with extreme caution!
  *
- *		See DropRelationBuffers in bufmgr.c for more notes.
+ *		See DropRelFileNodeBuffers in bufmgr.c for more notes.
  */
 void
-DropRelationLocalBuffers(RelFileLocator rlocator, ForkNumber forkNum,
-						 BlockNumber firstDelBlock)
+DropRelFileNodeLocalBuffers(RelFileNode rnode, ForkNumber forkNum,
+							BlockNumber firstDelBlock)
 {
 	int			i;
 
@@ -340,25 +337,24 @@ DropRelationLocalBuffers(RelFileLocator rlocator, ForkNumber forkNum,
 		buf_state = pg_atomic_read_u32(&bufHdr->state);
 
 		if ((buf_state & BM_TAG_VALID) &&
-			BufTagMatchesRelFileLocator(&bufHdr->tag, &rlocator) &&
-			BufTagGetForkNum(&bufHdr->tag) == forkNum &&
+			RelFileNodeEquals(bufHdr->tag.rnode, rnode) &&
+			bufHdr->tag.forkNum == forkNum &&
 			bufHdr->tag.blockNum >= firstDelBlock)
 		{
 			if (LocalRefCount[i] != 0)
 				elog(ERROR, "block %u of %s is still referenced (local %u)",
 					 bufHdr->tag.blockNum,
-					 relpathbackend(BufTagGetRelFileLocator(&bufHdr->tag),
-									MyBackendId,
-									BufTagGetForkNum(&bufHdr->tag)),
+					 relpathbackend(bufHdr->tag.rnode, MyBackendId,
+									bufHdr->tag.forkNum),
 					 LocalRefCount[i]);
-
 			/* Remove entry from hashtable */
 			hresult = (LocalBufferLookupEnt *)
-				hash_search(LocalBufHash, &bufHdr->tag, HASH_REMOVE, NULL);
+				hash_search(LocalBufHash, (void *) &bufHdr->tag,
+							HASH_REMOVE, NULL);
 			if (!hresult)		/* shouldn't happen */
 				elog(ERROR, "local buffer hash table corrupted");
 			/* Mark buffer invalid */
-			ClearBufferTag(&bufHdr->tag);
+			CLEAR_BUFFERTAG(bufHdr->tag);
 			buf_state &= ~BUF_FLAG_MASK;
 			buf_state &= ~BUF_USAGECOUNT_MASK;
 			pg_atomic_unlocked_write_u32(&bufHdr->state, buf_state);
@@ -367,14 +363,14 @@ DropRelationLocalBuffers(RelFileLocator rlocator, ForkNumber forkNum,
 }
 
 /*
- * DropRelationAllLocalBuffers
+ * DropRelFileNodeAllLocalBuffers
  *		This function removes from the buffer pool all pages of all forks
  *		of the specified relation.
  *
- *		See DropRelationsAllBuffers in bufmgr.c for more notes.
+ *		See DropRelFileNodesAllBuffers in bufmgr.c for more notes.
  */
 void
-DropRelationAllLocalBuffers(RelFileLocator rlocator)
+DropRelFileNodeAllLocalBuffers(RelFileNode rnode)
 {
 	int			i;
 
@@ -387,22 +383,22 @@ DropRelationAllLocalBuffers(RelFileLocator rlocator)
 		buf_state = pg_atomic_read_u32(&bufHdr->state);
 
 		if ((buf_state & BM_TAG_VALID) &&
-			BufTagMatchesRelFileLocator(&bufHdr->tag, &rlocator))
+			RelFileNodeEquals(bufHdr->tag.rnode, rnode))
 		{
 			if (LocalRefCount[i] != 0)
 				elog(ERROR, "block %u of %s is still referenced (local %u)",
 					 bufHdr->tag.blockNum,
-					 relpathbackend(BufTagGetRelFileLocator(&bufHdr->tag),
-									MyBackendId,
-									BufTagGetForkNum(&bufHdr->tag)),
+					 relpathbackend(bufHdr->tag.rnode, MyBackendId,
+									bufHdr->tag.forkNum),
 					 LocalRefCount[i]);
 			/* Remove entry from hashtable */
 			hresult = (LocalBufferLookupEnt *)
-				hash_search(LocalBufHash, &bufHdr->tag, HASH_REMOVE, NULL);
+				hash_search(LocalBufHash, (void *) &bufHdr->tag,
+							HASH_REMOVE, NULL);
 			if (!hresult)		/* shouldn't happen */
 				elog(ERROR, "local buffer hash table corrupted");
 			/* Mark buffer invalid */
-			ClearBufferTag(&bufHdr->tag);
+			CLEAR_BUFFERTAG(bufHdr->tag);
 			buf_state &= ~BUF_FLAG_MASK;
 			buf_state &= ~BUF_USAGECOUNT_MASK;
 			pg_atomic_unlocked_write_u32(&bufHdr->state, buf_state);
@@ -482,24 +478,6 @@ InitLocalBuffers(void)
 
 	/* Initialization done, mark buffers allocated */
 	NLocBuffer = nbufs;
-}
-
-/*
- * GUC check_hook for temp_buffers
- */
-bool
-check_temp_buffers(int *newval, void **extra, GucSource source)
-{
-	/*
-	 * Once local buffers have been initialized, it's too late to change this.
-	 * However, if this is only a test call, allow it.
-	 */
-	if (source != PGC_S_TEST && NLocBuffer && NLocBuffer != *newval)
-	{
-		GUC_check_errdetail("\"temp_buffers\" cannot be changed after any temporary tables have been accessed in the session.");
-		return false;
-	}
-	return true;
 }
 
 /*
@@ -611,8 +589,8 @@ AtProcExit_LocalBuffers(void)
 {
 	/*
 	 * We shouldn't be holding any remaining pins; if we are, and assertions
-	 * aren't enabled, we'll fail later in DropRelationBuffers while trying to
-	 * drop the temp rels.
+	 * aren't enabled, we'll fail later in DropRelFileNodeBuffers while trying
+	 * to drop the temp rels.
 	 */
 	CheckForLocalBufferLeaks();
 }

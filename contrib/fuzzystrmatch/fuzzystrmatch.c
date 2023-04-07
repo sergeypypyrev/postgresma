@@ -6,7 +6,7 @@
  * Joe Conway <mail@joeconway.com>
  *
  * contrib/fuzzystrmatch/fuzzystrmatch.c
- * Copyright (c) 2001-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2022, PostgreSQL Global Development Group
  * ALL RIGHTS RESERVED;
  *
  * metaphone()
@@ -43,7 +43,6 @@
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
 #include "utils/varlena.h"
-#include "varatt.h"
 
 PG_MODULE_MAGIC;
 
@@ -725,8 +724,8 @@ _soundex(const char *instr, char *outstr)
 {
 	int			count;
 
-	Assert(instr);
-	Assert(outstr);
+	AssertArg(instr);
+	AssertArg(outstr);
 
 	outstr[SOUNDEX_LEN] = '\0';
 

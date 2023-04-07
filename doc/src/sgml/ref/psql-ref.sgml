@@ -49,7 +49,7 @@ PostgreSQL documentation
   <title>Options</title>
 
   <variablelist>
-    <varlistentry id="app-psql-option-echo-all">
+    <varlistentry>
       <term><option>-a</option></term>
       <term><option>--echo-all</option></term>
       <listitem>
@@ -62,7 +62,7 @@ PostgreSQL documentation
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-no-align">
+    <varlistentry>
       <term><option>-A</option></term>
       <term><option>--no-align</option></term>
       <listitem>
@@ -74,7 +74,7 @@ PostgreSQL documentation
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-echo-errors">
+    <varlistentry>
       <term><option>-b</option></term>
       <term><option>--echo-errors</option></term>
       <listitem>
@@ -86,7 +86,7 @@ PostgreSQL documentation
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-command">
+    <varlistentry>
       <term><option>-c <replaceable class="parameter">command</replaceable></option></term>
       <term><option>--command=<replaceable class="parameter">command</replaceable></option></term>
       <listitem>
@@ -143,7 +143,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-csv">
+    <varlistentry>
       <term><option>--csv</option></term>
       <listitem>
       <para>
@@ -153,7 +153,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-dbname">
+    <varlistentry>
       <term><option>-d <replaceable class="parameter">dbname</replaceable></option></term>
       <term><option>--dbname=<replaceable class="parameter">dbname</replaceable></option></term>
       <listitem>
@@ -169,7 +169,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-echo-queries">
+    <varlistentry>
       <term><option>-e</option></term>
       <term><option>--echo-queries</option></term>
       <listitem>
@@ -182,7 +182,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-echo-hidden">
+    <varlistentry>
       <term><option>-E</option></term>
       <term><option>--echo-hidden</option></term>
       <listitem>
@@ -195,7 +195,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-file">
+    <varlistentry>
       <term><option>-f <replaceable class="parameter">filename</replaceable></option></term>
       <term><option>--file=<replaceable class="parameter">filename</replaceable></option></term>
       <listitem>
@@ -237,7 +237,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-field-separator">
+    <varlistentry>
       <term><option>-F <replaceable class="parameter">separator</replaceable></option></term>
       <term><option>--field-separator=<replaceable class="parameter">separator</replaceable></option></term>
       <listitem>
@@ -249,7 +249,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-field-host">
+    <varlistentry>
       <term><option>-h <replaceable class="parameter">hostname</replaceable></option></term>
       <term><option>--host=<replaceable class="parameter">hostname</replaceable></option></term>
       <listitem>
@@ -262,7 +262,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-html">
+    <varlistentry>
       <term><option>-H</option></term>
       <term><option>--html</option></term>
       <listitem>
@@ -274,7 +274,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-list">
+    <varlistentry>
       <term><option>-l</option></term>
       <term><option>--list</option></term>
       <listitem>
@@ -294,7 +294,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-log-file">
+    <varlistentry>
       <term><option>-L <replaceable class="parameter">filename</replaceable></option></term>
       <term><option>--log-file=<replaceable class="parameter">filename</replaceable></option></term>
       <listitem>
@@ -306,7 +306,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-no-readline">
+    <varlistentry>
       <term><option>-n</option></term>
       <term><option>--no-readline</option></term>
       <listitem>
@@ -318,7 +318,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-output">
+    <varlistentry>
       <term><option>-o <replaceable class="parameter">filename</replaceable></option></term>
       <term><option>--output=<replaceable class="parameter">filename</replaceable></option></term>
       <listitem>
@@ -330,7 +330,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-port">
+    <varlistentry>
       <term><option>-p <replaceable class="parameter">port</replaceable></option></term>
       <term><option>--port=<replaceable class="parameter">port</replaceable></option></term>
       <listitem>
@@ -344,7 +344,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-pset">
+    <varlistentry>
       <term><option>-P <replaceable class="parameter">assignment</replaceable></option></term>
       <term><option>--pset=<replaceable class="parameter">assignment</replaceable></option></term>
       <listitem>
@@ -358,7 +358,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-quiet">
+    <varlistentry>
       <term><option>-q</option></term>
       <term><option>--quiet</option></term>
       <listitem>
@@ -373,7 +373,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-record-separator">
+    <varlistentry>
       <term><option>-R <replaceable class="parameter">separator</replaceable></option></term>
       <term><option>--record-separator=<replaceable class="parameter">separator</replaceable></option></term>
       <listitem>
@@ -385,7 +385,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-single-step">
+    <varlistentry>
       <term><option>-s</option></term>
       <term><option>--single-step</option></term>
       <listitem>
@@ -397,7 +397,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-single-line">
+    <varlistentry>
       <term><option>-S</option></term>
       <term><option>--single-line</option></term>
       <listitem>
@@ -417,7 +417,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-tuples-only">
+    <varlistentry>
       <term><option>-t</option></term>
       <term><option>--tuples-only</option></term>
       <listitem>
@@ -429,7 +429,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-table-attr">
+    <varlistentry>
       <term><option>-T <replaceable class="parameter">table_options</replaceable></option></term>
       <term><option>--table-attr=<replaceable class="parameter">table_options</replaceable></option></term>
       <listitem>
@@ -441,7 +441,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-username">
+    <varlistentry>
       <term><option>-U <replaceable class="parameter">username</replaceable></option></term>
       <term><option>--username=<replaceable class="parameter">username</replaceable></option></term>
       <listitem>
@@ -453,7 +453,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-variable">
+    <varlistentry>
       <term><option>-v <replaceable class="parameter">assignment</replaceable></option></term>
       <term><option>--set=<replaceable class="parameter">assignment</replaceable></option></term>
       <term><option>--variable=<replaceable class="parameter">assignment</replaceable></option></term>
@@ -470,7 +470,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-version">
+    <varlistentry>
       <term><option>-V</option></term>
       <term><option>--version</option></term>
       <listitem>
@@ -480,7 +480,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-no-password">
+    <varlistentry>
      <term><option>-w</option></term>
      <term><option>--no-password</option></term>
      <listitem>
@@ -500,7 +500,7 @@ EOF
      </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-password">
+    <varlistentry>
       <term><option>-W</option></term>
       <term><option>--password</option></term>
       <listitem>
@@ -528,7 +528,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-expanded">
+    <varlistentry>
       <term><option>-x</option></term>
       <term><option>--expanded</option></term>
       <listitem>
@@ -539,7 +539,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-no-psqlrc">
+    <varlistentry>
       <term><option>-X,</option></term>
       <term><option>--no-psqlrc</option></term>
       <listitem>
@@ -551,7 +551,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-field-separator-zero">
+    <varlistentry>
       <term><option>-z</option></term>
       <term><option>--field-separator-zero</option></term>
       <listitem>
@@ -562,7 +562,7 @@ EOF
       </listitem>
     </varlistentry>
 
-    <varlistentry id="app-psql-option-record-separator-zero">
+    <varlistentry>
       <term><option>-0</option></term>
       <term><option>--record-separator-zero</option></term>
       <listitem>
@@ -574,7 +574,7 @@ EOF
       </listitem>
     </varlistentry>
 
-     <varlistentry id="app-psql-option-single-transaction">
+     <varlistentry>
       <term><option>-1</option></term>
       <term><option>--single-transaction</option></term>
       <listitem>
@@ -602,7 +602,7 @@ EOF
       </listitem>
      </varlistentry>
 
-    <varlistentry id="app-psql-option-help">
+    <varlistentry>
       <term><option>-?</option></term>
       <term><option>--help[=<replaceable class="parameter">topic</replaceable>]</option></term>
       <listitem>
@@ -646,24 +646,23 @@ EOF
     <application>psql</application> is a regular
     <productname>PostgreSQL</productname> client application. In order
     to connect to a database you need to know the name of your target
-    database, the host name and port number of the server, and what
-    database user name you want to connect as. <application>psql</application>
-    can be told about those parameters via command line options, namely
+    database, the host name and port number of the server, and what user
+    name you want to connect as. <application>psql</application> can be
+    told about those parameters via command line options, namely
     <option>-d</option>, <option>-h</option>, <option>-p</option>, and
     <option>-U</option> respectively. If an argument is found that does
     not belong to any option it will be interpreted as the database name
-    (or the database user name, if the database name is already given). Not all
+    (or the user name, if the database name is already given). Not all
     of these options are required; there are useful defaults. If you omit the host
     name, <application>psql</application> will connect via a Unix-domain socket
     to a server on the local host, or via TCP/IP to <literal>localhost</literal> on
-    Windows. The default port number is
+    machines that don't have Unix-domain sockets. The default port number is
     determined at compile time.
     Since the database server uses the same default, you will not have
-    to specify the port in most cases. The default database user name is your
-    operating-system user name. Once the database user name is determined, it
-    is used as the default database name.
+    to specify the port in most cases. The default user name is your
+    operating-system user name, as is the default database name.
     Note that you cannot
-    just connect to any database under any database user name. Your database
+    just connect to any database under any user name. Your database
     administrator should have informed you about your access rights.
     </para>
 
@@ -868,7 +867,7 @@ testdb=&gt;
     The following meta-commands are defined:
 
     <variablelist>
-      <varlistentry id="app-psql-meta-command-a">
+      <varlistentry>
         <term><literal>\a</literal></term>
         <listitem>
         <para>
@@ -880,43 +879,7 @@ testdb=&gt;
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-bind">
-       <term><literal>\bind</literal> [ <replaceable class="parameter">parameter</replaceable> ] ... </term>
-
-       <listitem>
-        <para>
-         Sets query parameters for the next query execution, with the
-         specified parameters passed for any parameter placeholders
-         (<literal>$1</literal> etc.).
-        </para>
-
-        <para>
-         Example:
-<programlisting>
-INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
-</programlisting>
-        </para>
-
-        <para>
-         This also works for query-execution commands besides
-         <literal>\g</literal>, such as <literal>\gx</literal> and
-         <literal>\gset</literal>.
-        </para>
-
-        <para>
-         This command causes the extended query protocol (see <xref
-         linkend="protocol-query-concepts"/>) to be used, unlike normal
-         <application>psql</application> operation, which uses the simple
-         query protocol.  So this command can be useful to test the extended
-         query protocol from psql.  (The extended query protocol is used even
-         if the query has no parameters and this command specifies zero
-         parameters.)  This command affects only the next query executed; all
-         subsequent queries will use the simple query protocol by default.
-        </para>
-       </listitem>
-      </varlistentry>
-
-      <varlistentry id="app-psql-meta-command-c-lc">
+      <varlistentry>
         <term><literal>\c</literal> or <literal>\connect [ -reuse-previous=<replaceable class="parameter">on|off</replaceable> ] [ <replaceable class="parameter">dbname</replaceable> [ <replaceable class="parameter">username</replaceable> ] [ <replaceable class="parameter">host</replaceable> ] [ <replaceable class="parameter">port</replaceable> ] | <replaceable class="parameter">conninfo</replaceable> ]</literal></term>
         <listitem>
         <para>
@@ -996,7 +959,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-c-uc">
+      <varlistentry>
         <term><literal>\C [ <replaceable class="parameter">title</replaceable> ]</literal></term>
         <listitem>
         <para>
@@ -1011,7 +974,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-cd">
+      <varlistentry>
        <term><literal>\cd [ <replaceable>directory</replaceable> ]</literal></term>
        <listitem>
         <para>
@@ -1028,7 +991,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
        </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-conninfo">
+      <varlistentry>
         <term><literal>\conninfo</literal></term>
         <listitem>
         <para>
@@ -1125,7 +1088,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-copyright">
+      <varlistentry>
         <term><literal>\copyright</literal></term>
         <listitem>
         <para>
@@ -1209,7 +1172,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-d">
+      <varlistentry>
         <term><literal>\d[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
 
         <listitem>
@@ -1263,7 +1226,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-da-lc">
+      <varlistentry>
         <term><literal>\da[S] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
 
         <listitem>
@@ -1279,7 +1242,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-da-uc">
+      <varlistentry>
         <term><literal>\dA[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
 
         <listitem>
@@ -1293,7 +1256,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-dac">
+      <varlistentry>
         <term>
           <literal>\dAc[+]
             [<link linkend="app-psql-patterns"><replaceable class="parameter">access-method-pattern</replaceable></link>
@@ -1316,7 +1279,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-daf">
+      <varlistentry>
         <term>
           <literal>\dAf[+]
             [<link linkend="app-psql-patterns"><replaceable class="parameter">access-method-pattern</replaceable></link>
@@ -1339,7 +1302,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-dao">
+      <varlistentry>
         <term>
           <literal>\dAo[+]
             [<link linkend="app-psql-patterns"><replaceable class="parameter">access-method-pattern</replaceable></link>
@@ -1363,7 +1326,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-dap">
+      <varlistentry>
         <term>
           <literal>\dAp[+]
             [<link linkend="app-psql-patterns"><replaceable class="parameter">access-method-pattern</replaceable></link>
@@ -1386,7 +1349,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-db">
+      <varlistentry>
         <term><literal>\db[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
 
         <listitem>
@@ -1402,7 +1365,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-dc-lc">
+      <varlistentry>
         <term><literal>\dc[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1420,7 +1383,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-dconfig">
+      <varlistentry>
         <term><literal>\dconfig[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1439,7 +1402,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-dc-uc">
+      <varlistentry>
         <term><literal>\dC[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1454,7 +1417,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-dd-lc">
+      <varlistentry>
         <term><literal>\dd[S] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1483,7 +1446,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-dd-uc">
+      <varlistentry>
         <term><literal>\dD[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1500,7 +1463,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-ddp">
+      <varlistentry>
         <term><literal>\ddp [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1522,7 +1485,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-de">
+      <varlistentry>
         <term><literal>\dE[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <term><literal>\di[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <term><literal>\dm[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
@@ -1555,7 +1518,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-des">
+      <varlistentry>
         <term><literal>\des[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1571,7 +1534,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-det">
+      <varlistentry>
         <term><literal>\det[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1586,7 +1549,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-deu">
+      <varlistentry>
         <term><literal>\deu[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1609,7 +1572,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-dew">
+      <varlistentry>
         <term><literal>\dew[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1625,7 +1588,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-df-lc">
+      <varlistentry>
         <term><literal>\df[anptwS+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> [ <replaceable class="parameter">arg_pattern</replaceable> ... ] ]</literal></term>
 
         <listitem>
@@ -1650,16 +1613,13 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         If the form <literal>\df+</literal> is used, additional information
         about each function is shown, including volatility,
         parallel safety, owner, security classification, access privileges,
-        language, internal name (for C and internal functions only),
-        and description.
-        Source code for a specific function can be seen
-        using <literal>\sf</literal>.
+        language, source code and description.
         </para>
 
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-df-uc">
+      <varlistentry>
         <term><literal>\dF[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1673,7 +1633,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-dfd">
+      <varlistentry>
         <term><literal>\dFd[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1687,7 +1647,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-dfp">
+      <varlistentry>
         <term><literal>\dFp[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1701,7 +1661,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-dft">
+      <varlistentry>
         <term><literal>\dFt[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1715,7 +1675,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-dg">
+      <varlistentry>
         <term><literal>\dg[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1735,7 +1695,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-dl-lc">
+      <varlistentry>
         <term><literal>\dl[+]</literal></term>
         <listitem>
         <para>
@@ -1748,7 +1708,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-dl-uc">
+      <varlistentry>
         <term><literal>\dL[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1765,7 +1725,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-dn">
+      <varlistentry>
         <term><literal>\dn[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
 
         <listitem>
@@ -1782,7 +1742,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-do-lc">
+      <varlistentry>
         <term><literal>\do[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> [ <replaceable class="parameter">arg_pattern</replaceable> [ <replaceable class="parameter">arg_pattern</replaceable> ] ] ]</literal></term>
         <listitem>
         <para>
@@ -1807,7 +1767,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-do-uc">
+      <varlistentry>
         <term><literal>\dO[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1827,17 +1787,15 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-dp-lc">
-        <term><literal>\dp[S] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
+      <varlistentry>
+        <term><literal>\dp [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
         Lists tables, views and sequences with their
         associated access privileges.
         If <replaceable class="parameter">pattern</replaceable> is
         specified, only tables, views and sequences whose names match the
-        pattern are listed.  By default only user-created objects are shown;
-        supply a pattern or the <literal>S</literal> modifier to include
-        system objects.
+        pattern are listed.
         </para>
 
         <para>
@@ -1851,7 +1809,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-dp-uc">
+      <varlistentry>
         <term><literal>\dP[itn+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1883,7 +1841,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-drds">
+      <varlistentry>
         <term><literal>\drds [ <link linkend="app-psql-patterns"><replaceable class="parameter">role-pattern</replaceable></link> [ <link linkend="app-psql-patterns"><replaceable class="parameter">database-pattern</replaceable></link> ] ]</literal></term>
         <listitem>
         <para>
@@ -1902,17 +1860,10 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         commands are used to define per-role and per-database configuration
         settings.
         </para>
-
-        <para>
-        Since <productname>PostgreSQL</productname> 16, the output includes a
-        column with the values of the
-        <link linkend="sql-alterrole-user-set"><literal>USER SET</literal></link>
-        flag for each setting.
-        </para>
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-drp">
+      <varlistentry>
         <term><literal>\dRp[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1926,7 +1877,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-drs">
+      <varlistentry>
         <term><literal>\dRs[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1940,7 +1891,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-dt">
+      <varlistentry>
         <term><literal>\dT[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1957,7 +1908,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-du">
+      <varlistentry>
         <term><literal>\du[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1976,7 +1927,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-dx-lc">
+      <varlistentry>
         <term><literal>\dx[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -1990,7 +1941,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-dx-uc">
+      <varlistentry>
         <term><literal>\dX [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -2012,7 +1963,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-dy">
+      <varlistentry>
         <term><literal>\dy[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -2026,7 +1977,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-edit">
+      <varlistentry>
         <term><literal>\e</literal> or <literal>\edit</literal> <literal> <optional> <replaceable class="parameter">filename</replaceable> </optional> <optional> <replaceable class="parameter">line_number</replaceable> </optional> </literal></term>
 
         <listitem>
@@ -2079,7 +2030,7 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-echo">
+      <varlistentry>
         <term><literal>\echo <replaceable class="parameter">text</replaceable> [ ... ]</literal></term>
         <listitem>
         <para>
@@ -2104,7 +2055,7 @@ Tue Oct 26 21:40:57 CEST 1999
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-ef">
+      <varlistentry>
         <term><literal>\ef <optional> <replaceable class="parameter">function_description</replaceable> <optional>  <replaceable class="parameter">line_number</replaceable> </optional> </optional> </literal></term>
 
         <listitem>
@@ -2156,7 +2107,7 @@ Tue Oct 26 21:40:57 CEST 1999
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-encoding">
+      <varlistentry>
         <term><literal>\encoding [ <replaceable class="parameter">encoding</replaceable> ]</literal></term>
 
         <listitem>
@@ -2168,7 +2119,7 @@ Tue Oct 26 21:40:57 CEST 1999
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-errverbose">
+      <varlistentry>
         <term><literal>\errverbose</literal></term>
 
         <listitem>
@@ -2182,7 +2133,7 @@ Tue Oct 26 21:40:57 CEST 1999
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-ev">
+      <varlistentry>
         <term><literal>\ev <optional> <replaceable class="parameter">view_name</replaceable> <optional>  <replaceable class="parameter">line_number</replaceable> </optional> </optional> </literal></term>
 
         <listitem>
@@ -2217,7 +2168,7 @@ Tue Oct 26 21:40:57 CEST 1999
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-f">
+      <varlistentry>
         <term><literal>\f [ <replaceable class="parameter">string</replaceable> ]</literal></term>
 
         <listitem>
@@ -2230,7 +2181,7 @@ Tue Oct 26 21:40:57 CEST 1999
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-g">
+      <varlistentry>
         <term><literal>\g [ (<replaceable class="parameter">option</replaceable>=<replaceable class="parameter">value</replaceable> [...]) ] [ <replaceable class="parameter">filename</replaceable> ]</literal></term>
         <term><literal>\g [ (<replaceable class="parameter">option</replaceable>=<replaceable class="parameter">value</replaceable> [...]) ] [ |<replaceable class="parameter">command</replaceable> ]</literal></term>
         <listitem>
@@ -2285,7 +2236,7 @@ Tue Oct 26 21:40:57 CEST 1999
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-gdesc">
+      <varlistentry>
         <term><literal>\gdesc</literal></term>
 
         <listitem>
@@ -2304,7 +2255,7 @@ Tue Oct 26 21:40:57 CEST 1999
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-getenv">
+      <varlistentry>
         <term><literal>\getenv <replaceable class="parameter">psql_var</replaceable> <replaceable class="parameter">env_var</replaceable></literal></term>
 
         <listitem>
@@ -2326,7 +2277,7 @@ Tue Oct 26 21:40:57 CEST 1999
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-gexec">
+      <varlistentry>
         <term><literal>\gexec</literal></term>
 
         <listitem>
@@ -2372,7 +2323,7 @@ CREATE INDEX
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-gset">
+      <varlistentry>
         <term><literal>\gset [ <replaceable class="parameter">prefix</replaceable> ]</literal></term>
 
         <listitem>
@@ -2417,7 +2368,7 @@ hello 10
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-gx">
+      <varlistentry>
         <term><literal>\gx [ (<replaceable class="parameter">option</replaceable>=<replaceable class="parameter">value</replaceable> [...]) ] [ <replaceable class="parameter">filename</replaceable> ]</literal></term>
         <term><literal>\gx [ (<replaceable class="parameter">option</replaceable>=<replaceable class="parameter">value</replaceable> [...]) ] [ |<replaceable class="parameter">command</replaceable> ]</literal></term>
         <listitem>
@@ -2431,7 +2382,7 @@ hello 10
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-help">
+      <varlistentry>
         <term><literal>\h</literal> or <literal>\help</literal> <literal>[ <replaceable class="parameter">command</replaceable> ]</literal></term>
         <listitem>
         <para>
@@ -2462,7 +2413,7 @@ hello 10
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-html">
+      <varlistentry>
         <term><literal>\H</literal> or <literal>\html</literal></term>
         <listitem>
         <para>
@@ -2476,7 +2427,7 @@ hello 10
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-include">
+      <varlistentry>
         <term><literal>\i</literal> or <literal>\include</literal> <replaceable class="parameter">filename</replaceable></term>
         <listitem>
         <para>
@@ -2591,7 +2542,7 @@ SELECT
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-include-relative">
+      <varlistentry>
         <term><literal>\ir</literal> or <literal>\include_relative</literal> <replaceable class="parameter">filename</replaceable></term>
         <listitem>
         <para>
@@ -2606,7 +2557,7 @@ SELECT
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-list">
+      <varlistentry>
         <term><literal>\l[+]</literal> or <literal>\list[+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
@@ -2623,7 +2574,7 @@ SELECT
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-lo-export">
+      <varlistentry>
         <term><literal>\lo_export <replaceable class="parameter">loid</replaceable> <replaceable class="parameter">filename</replaceable></literal></term>
 
         <listitem>
@@ -2647,7 +2598,7 @@ SELECT
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-lo-import">
+      <varlistentry>
         <term><literal>\lo_import <replaceable class="parameter">filename</replaceable> [ <replaceable class="parameter">comment</replaceable> ]</literal></term>
 
         <listitem>
@@ -2676,7 +2627,7 @@ lo_import 152801
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-lo-list">
+      <varlistentry>
         <term><literal>\lo_list[+]</literal></term>
         <listitem>
         <para>
@@ -2690,7 +2641,7 @@ lo_import 152801
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-lo-unlink">
+      <varlistentry>
         <term><literal>\lo_unlink <replaceable class="parameter">loid</replaceable></literal></term>
 
         <listitem>
@@ -2710,7 +2661,7 @@ lo_import 152801
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-out">
+      <varlistentry>
         <term><literal>\o</literal> or <literal>\out [ <replaceable class="parameter">filename</replaceable> ]</literal></term>
         <term><literal>\o</literal> or <literal>\out [ |<replaceable class="parameter">command</replaceable> ]</literal></term>
         <listitem>
@@ -2749,7 +2700,7 @@ lo_import 152801
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-print">
+      <varlistentry>
         <term><literal>\p</literal> or <literal>\print</literal></term>
         <listitem>
         <para>
@@ -2760,7 +2711,7 @@ lo_import 152801
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-password">
+      <varlistentry>
         <term><literal>\password [ <replaceable class="parameter">username</replaceable> ]</literal></term>
         <listitem>
         <para>
@@ -2773,7 +2724,7 @@ lo_import 152801
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-prompt">
+      <varlistentry>
         <term><literal>\prompt [ <replaceable class="parameter">text</replaceable> ] <replaceable class="parameter">name</replaceable></literal></term>
         <listitem>
         <para>
@@ -2792,7 +2743,7 @@ lo_import 152801
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-pset">
+      <varlistentry>
         <term><literal>\pset [ <replaceable class="parameter">option</replaceable> [ <replaceable class="parameter">value</replaceable> ] ]</literal></term>
 
         <listitem>
@@ -2817,7 +2768,7 @@ lo_import 152801
         <para>
         Adjustable printing options are:
         <variablelist>
-          <varlistentry id="app-psql-meta-command-pset-border">
+          <varlistentry>
           <term><literal>border</literal></term>
           <listitem>
           <para>
@@ -2837,7 +2788,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-columns">
+          <varlistentry>
           <term><literal>columns</literal></term>
           <listitem>
           <para>
@@ -2856,7 +2807,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-csv-fieldsep">
+          <varlistentry>
           <term><literal>csv_fieldsep</literal></term>
           <listitem>
           <para>
@@ -2869,7 +2820,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-expanded">
+          <varlistentry>
           <term><literal>expanded</literal> (or <literal>x</literal>)</term>
           <listitem>
           <para>
@@ -2891,40 +2842,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-xheader-width">
-          <term><literal>xheader_width</literal></term>
-          <listitem>
-          <para>
-           Sets the maximum width of the header for expanded output to one of
-           <literal>full</literal> (the default value),
-           <literal>column</literal>, <literal>page</literal>, or an
-           <replaceable class="parameter">integer value</replaceable>.
-          </para>
-
-          <para>
-           <literal>full</literal>: the expanded header is not truncated,
-           and will be as wide as the widest output
-           line.
-          </para>
-
-          <para>
-           <literal>column</literal>: truncate the header line at the
-           width of the first column.
-          </para>
-
-          <para>
-           <literal>page</literal>: truncate the header line at the terminal
-           width.
-          </para>
-
-          <para>
-           <replaceable class="parameter">integer value</replaceable>: specify
-           the exact maximum width of the header line.
-          </para>
-          </listitem>
-          </varlistentry>
-
-          <varlistentry id="app-psql-meta-command-pset-fieldsep">
+          <varlistentry>
           <term><literal>fieldsep</literal></term>
           <listitem>
           <para>
@@ -2938,7 +2856,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-fieldsep-zero">
+          <varlistentry>
           <term><literal>fieldsep_zero</literal></term>
           <listitem>
           <para>
@@ -2948,7 +2866,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-footer">
+          <varlistentry>
           <term><literal>footer</literal></term>
           <listitem>
           <para>
@@ -2962,7 +2880,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-format">
+          <varlistentry>
           <term><literal>format</literal></term>
           <listitem>
           <para>
@@ -3039,7 +2957,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-linestyle">
+          <varlistentry>
           <term><literal>linestyle</literal></term>
           <listitem>
           <para>
@@ -3090,7 +3008,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-null">
+          <varlistentry>
           <term><literal>null</literal></term>
           <listitem>
           <para>
@@ -3102,7 +3020,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-numericlocale">
+          <varlistentry>
           <term><literal>numericlocale</literal></term>
           <listitem>
           <para>
@@ -3116,7 +3034,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-pager">
+          <varlistentry>
           <term><literal>pager</literal></term>
           <listitem>
           <para>
@@ -3151,7 +3069,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-pager-min-lines">
+          <varlistentry>
           <term><literal>pager_min_lines</literal></term>
           <listitem>
           <para>
@@ -3163,7 +3081,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-recordsep">
+          <varlistentry>
           <term><literal>recordsep</literal></term>
           <listitem>
           <para>
@@ -3173,7 +3091,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-recordsep-zero">
+          <varlistentry>
           <term><literal>recordsep_zero</literal></term>
           <listitem>
           <para>
@@ -3183,7 +3101,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-tableattr">
+          <varlistentry>
           <term><literal>tableattr</literal> (or <literal>T</literal>)</term>
           <listitem>
           <para>
@@ -3207,7 +3125,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-title">
+          <varlistentry>
           <term><literal>title</literal> (or <literal>C</literal>)</term>
           <listitem>
           <para>
@@ -3219,7 +3137,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-tuples-only">
+          <varlistentry>
           <term><literal>tuples_only</literal> (or <literal>t</literal>)</term>
           <listitem>
           <para>
@@ -3235,7 +3153,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-unicode-border-linestyle">
+          <varlistentry>
           <term><literal>unicode_border_linestyle</literal></term>
           <listitem>
           <para>
@@ -3246,7 +3164,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-unicode-column-linestyle">
+          <varlistentry>
           <term><literal>unicode_column_linestyle</literal></term>
           <listitem>
           <para>
@@ -3257,7 +3175,7 @@ lo_import 152801
           </listitem>
           </varlistentry>
 
-          <varlistentry id="app-psql-meta-command-pset-unicode-header-linestyle">
+          <varlistentry>
           <term><literal>unicode_header_linestyle</literal></term>
           <listitem>
           <para>
@@ -3288,7 +3206,7 @@ lo_import 152801
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-quit">
+      <varlistentry>
         <term><literal>\q</literal> or <literal>\quit</literal></term>
         <listitem>
         <para>
@@ -3299,7 +3217,7 @@ lo_import 152801
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-qecho">
+      <varlistentry>
         <term><literal>\qecho <replaceable class="parameter">text</replaceable> [ ... ] </literal></term>
         <listitem>
         <para>
@@ -3311,7 +3229,7 @@ lo_import 152801
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-reset">
+      <varlistentry>
         <term><literal>\r</literal> or <literal>\reset</literal></term>
         <listitem>
         <para>
@@ -3321,7 +3239,7 @@ lo_import 152801
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-s">
+      <varlistentry>
         <term><literal>\s [ <replaceable class="parameter">filename</replaceable> ]</literal></term>
         <listitem>
         <para>
@@ -3337,7 +3255,7 @@ lo_import 152801
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-set">
+      <varlistentry>
         <term><literal>\set [ <replaceable class="parameter">name</replaceable> [ <replaceable class="parameter">value</replaceable> [ ... ] ] ]</literal></term>
 
         <listitem>
@@ -3377,7 +3295,7 @@ lo_import 152801
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-setenv">
+      <varlistentry>
         <term><literal>\setenv <replaceable class="parameter">name</replaceable> [ <replaceable class="parameter">value</replaceable> ]</literal></term>
 
         <listitem>
@@ -3394,7 +3312,7 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-meta-command-sf">
+      <varlistentry>
         <term><literal>\sf[+] <replaceable class="parameter">function_description</replaceable> </literal></term>
 
         <listitem>
@@ -3429,7 +3347,7 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-sv">
+      <varlistentry>
         <term><literal>\sv[+] <replaceable class="parameter">view_name</replaceable> </literal></term>
 
         <listitem>
@@ -3455,7 +3373,7 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-t-lc">
+      <varlistentry>
         <term><literal>\t</literal></term>
         <listitem>
         <para>
@@ -3467,7 +3385,7 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-t-uc">
+      <varlistentry>
         <term><literal>\T <replaceable class="parameter">table_options</replaceable></literal></term>
         <listitem>
         <para>
@@ -3481,7 +3399,7 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-timing">
+      <varlistentry>
        <term><literal>\timing [ <replaceable class="parameter">on</replaceable> | <replaceable class="parameter">off</replaceable> ]</literal></term>
         <listitem>
         <para>
@@ -3495,7 +3413,7 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-unset">
+      <varlistentry>
         <term><literal>\unset <replaceable class="parameter">name</replaceable></literal></term>
 
         <listitem>
@@ -3514,7 +3432,7 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-write">
+      <varlistentry>
         <term><literal>\w</literal> or <literal>\write</literal> <replaceable class="parameter">filename</replaceable></term>
         <term><literal>\w</literal> or <literal>\write</literal> <literal>|</literal><replaceable class="parameter">command</replaceable></term>
         <listitem>
@@ -3538,7 +3456,7 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-warn">
+      <varlistentry>
         <term><literal>\warn <replaceable class="parameter">text</replaceable> [ ... ]</literal></term>
         <listitem>
         <para>
@@ -3550,7 +3468,7 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-watch">
+      <varlistentry>
         <term><literal>\watch [ <replaceable class="parameter">seconds</replaceable> ]</literal></term>
         <listitem>
         <para>
@@ -3568,7 +3486,7 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-x">
+      <varlistentry>
         <term><literal>\x [ <replaceable class="parameter">on</replaceable> | <replaceable class="parameter">off</replaceable> | <replaceable class="parameter">auto</replaceable> ]</literal></term>
         <listitem>
         <para>
@@ -3579,17 +3497,15 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-z">
-        <term><literal>\z[S] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
+      <varlistentry>
+        <term><literal>\z [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
         Lists tables, views and sequences with their
         associated access privileges.
         If a <replaceable class="parameter">pattern</replaceable> is
         specified, only tables, views and sequences whose names match the
-        pattern are listed.  By default only user-created objects are shown;
-        supply a pattern or the <literal>S</literal> modifier to include
-        system objects.
+        pattern are listed.
         </para>
 
         <para>
@@ -3600,7 +3516,7 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-exclamation-mark">
+      <varlistentry>
         <term><literal>\! [ <replaceable class="parameter">command</replaceable> ]</literal></term>
         <listitem>
         <para>
@@ -3620,7 +3536,7 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-question-mark">
+      <varlistentry>
         <term><literal>\? [ <replaceable class="parameter">topic</replaceable> ]</literal></term>
         <listitem>
         <para>
@@ -3637,7 +3553,7 @@ testdb=&gt; <userinput>\setenv LESS -imx4F</userinput>
       </varlistentry>
 
 
-      <varlistentry id="app-psql-meta-command-semicolon">
+      <varlistentry>
         <term><literal>\;</literal></term>
         <listitem>
         <para>
@@ -3861,7 +3777,7 @@ bar
    </para>
 
     <variablelist>
-      <varlistentry id="app-psql-variables-autocommit">
+      <varlistentry>
       <term>
        <varname>AUTOCOMMIT</varname>
        <indexterm>
@@ -3905,7 +3821,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-comp-keyword-case">
+      <varlistentry>
         <term><varname>COMP_KEYWORD_CASE</varname></term>
         <listitem>
         <para>
@@ -3921,7 +3837,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-dbname">
+      <varlistentry>
         <term><varname>DBNAME</varname></term>
         <listitem>
         <para>
@@ -3932,7 +3848,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-echo">
+      <varlistentry>
         <term><varname>ECHO</varname></term>
         <listitem>
         <para>
@@ -3951,7 +3867,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-echo-hidden">
+      <varlistentry>
         <term><varname>ECHO_HIDDEN</varname></term>
         <listitem>
         <para>
@@ -3968,7 +3884,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-encoding">
+      <varlistentry>
         <term><varname>ENCODING</varname></term>
         <listitem>
         <para>
@@ -3980,7 +3896,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-error">
+      <varlistentry>
        <term><varname>ERROR</varname></term>
        <listitem>
         <para>
@@ -3990,7 +3906,7 @@ bar
        </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-fetch-count">
+      <varlistentry>
         <term><varname>FETCH_COUNT</varname></term>
         <listitem>
         <para>
@@ -4018,7 +3934,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-hide-tableam">
+      <varlistentry>
         <term><varname>HIDE_TABLEAM</varname></term>
         <listitem>
         <para>
@@ -4029,7 +3945,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-hide-toast-compression">
+      <varlistentry>
         <term><varname>HIDE_TOAST_COMPRESSION</varname></term>
         <listitem>
         <para>
@@ -4040,7 +3956,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-histcontrol">
+      <varlistentry>
         <term><varname>HISTCONTROL</varname></term>
         <listitem>
         <para>
@@ -4061,7 +3977,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-histfile">
+      <varlistentry>
         <term><varname>HISTFILE</varname></term>
         <listitem>
         <para>
@@ -4087,7 +4003,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-histsize">
+      <varlistentry>
         <term><varname>HISTSIZE</varname></term>
         <listitem>
         <para>
@@ -4103,7 +4019,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-host">
+      <varlistentry>
         <term><varname>HOST</varname></term>
         <listitem>
         <para>
@@ -4114,7 +4030,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-ignoreeof">
+      <varlistentry>
         <term><varname>IGNOREEOF</varname></term>
         <listitem>
         <para>
@@ -4135,7 +4051,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-lastoid">
+      <varlistentry>
         <term><varname>LASTOID</varname></term>
         <listitem>
         <para>
@@ -4151,7 +4067,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-last-error-message">
+      <varlistentry>
        <term><varname>LAST_ERROR_MESSAGE</varname></term>
        <term><varname>LAST_ERROR_SQLSTATE</varname></term>
        <listitem>
@@ -4164,7 +4080,7 @@ bar
        </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-on-error-rollback">
+      <varlistentry>
       <term>
        <varname>ON_ERROR_ROLLBACK</varname>
        <indexterm>
@@ -4188,7 +4104,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-on-error-stop">
+      <varlistentry>
         <term><varname>ON_ERROR_STOP</varname></term>
         <listitem>
         <para>
@@ -4207,7 +4123,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-port">
+      <varlistentry>
         <term><varname>PORT</varname></term>
         <listitem>
         <para>
@@ -4218,7 +4134,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-prompt">
+      <varlistentry>
         <term><varname>PROMPT1</varname></term>
         <term><varname>PROMPT2</varname></term>
         <term><varname>PROMPT3</varname></term>
@@ -4231,7 +4147,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-quiet">
+      <varlistentry>
         <term><varname>QUIET</varname></term>
         <listitem>
         <para>
@@ -4242,7 +4158,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-row-count">
+      <varlistentry>
        <term><varname>ROW_COUNT</varname></term>
        <listitem>
         <para>
@@ -4252,7 +4168,7 @@ bar
        </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-server-version-name">
+      <varlistentry>
         <term><varname>SERVER_VERSION_NAME</varname></term>
         <term><varname>SERVER_VERSION_NUM</varname></term>
         <listitem>
@@ -4267,35 +4183,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-shell-error">
-       <term><varname>SHELL_ERROR</varname></term>
-       <listitem>
-        <para>
-         <literal>true</literal> if the last shell command
-         failed, <literal>false</literal> if it succeeded.
-         This applies to shell commands invoked via the <literal>\!</literal>
-         meta-command or backquote (<literal>`</literal>) expansion.
-         See also <varname>SHELL_EXIT_CODE</varname>.
-        </para>
-       </listitem>
-      </varlistentry>
-
-      <varlistentry id="app-psql-variables-shell-exit-code">
-       <term><varname>SHELL_EXIT_CODE</varname></term>
-       <listitem>
-        <para>
-         The exit status returned by the last shell command.
-         0&ndash;127 represent program exit codes, 128&ndash;255
-         indicate termination by a signal, and -1 indicates failure
-         to launch a program or to collect its exit status.
-         This applies to shell commands invoked via the <literal>\!</literal>
-         meta-command or backquote (<literal>`</literal>) expansion.
-         See also <varname>SHELL_ERROR</varname>.
-        </para>
-       </listitem>
-      </varlistentry>
-
-      <varlistentry id="app-psql-variables-show-all-results">
+      <varlistentry>
         <term><varname>SHOW_ALL_RESULTS</varname></term>
         <listitem>
         <para>
@@ -4307,7 +4195,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-show-context">
+       <varlistentry>
         <term><varname>SHOW_CONTEXT</varname></term>
         <listitem>
         <para>
@@ -4325,7 +4213,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-singleline">
+      <varlistentry>
         <term><varname>SINGLELINE</varname></term>
         <listitem>
         <para>
@@ -4335,7 +4223,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-singlestep">
+      <varlistentry>
         <term><varname>SINGLESTEP</varname></term>
         <listitem>
         <para>
@@ -4345,7 +4233,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-sqlstate">
+      <varlistentry>
        <term><varname>SQLSTATE</varname></term>
        <listitem>
         <para>
@@ -4356,7 +4244,7 @@ bar
        </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-user">
+      <varlistentry>
         <term><varname>USER</varname></term>
         <listitem>
         <para>
@@ -4367,7 +4255,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-verbosity">
+      <varlistentry>
         <term><varname>VERBOSITY</varname></term>
         <listitem>
         <para>
@@ -4381,7 +4269,7 @@ bar
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-variables-version">
+      <varlistentry>
         <term><varname>VERSION</varname></term>
         <term><varname>VERSION_NAME</varname></term>
         <term><varname>VERSION_NUM</varname></term>
@@ -4510,7 +4398,7 @@ testdb=&gt; <userinput>INSERT INTO my_table VALUES (:'content');</userinput>
     instead. Defined substitutions are:
 
     <variablelist>
-      <varlistentry id="app-psql-prompting-m-uc">
+      <varlistentry>
         <term><literal>%M</literal></term>
         <listitem>
          <para>
@@ -4524,7 +4412,7 @@ testdb=&gt; <userinput>INSERT INTO my_table VALUES (:'content');</userinput>
        </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-m-lc">
+      <varlistentry>
         <term><literal>%m</literal></term>
         <listitem>
          <para>
@@ -4535,12 +4423,12 @@ testdb=&gt; <userinput>INSERT INTO my_table VALUES (:'content');</userinput>
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-gt">
+      <varlistentry>
         <term><literal>%&gt;</literal></term>
         <listitem><para>The port number at which the database server is listening.</para></listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-n">
+      <varlistentry>
         <term><literal>%n</literal></term>
         <listitem>
          <para>
@@ -4552,18 +4440,18 @@ testdb=&gt; <userinput>INSERT INTO my_table VALUES (:'content');</userinput>
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-slash">
+      <varlistentry>
         <term><literal>%/</literal></term>
         <listitem><para>The name of the current database.</para></listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-tilde">
+      <varlistentry>
         <term><literal>%~</literal></term>
         <listitem><para>Like <literal>%/</literal>, but the output is <literal>~</literal>
          (tilde) if the database is your default database.</para></listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-numbersign">
+      <varlistentry>
         <term><literal>%#</literal></term>
         <listitem>
          <para>
@@ -4576,14 +4464,14 @@ testdb=&gt; <userinput>INSERT INTO my_table VALUES (:'content');</userinput>
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-p">
+      <varlistentry>
         <term><literal>%p</literal></term>
         <listitem>
          <para>The process ID of the backend currently connected to.</para>
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-r">
+      <varlistentry>
         <term><literal>%R</literal></term>
         <listitem>
         <para>
@@ -4606,7 +4494,7 @@ testdb=&gt; <userinput>INSERT INTO my_table VALUES (:'content');</userinput>
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-x">
+      <varlistentry>
         <term><literal>%x</literal></term>
         <listitem>
         <para>
@@ -4619,7 +4507,7 @@ testdb=&gt; <userinput>INSERT INTO my_table VALUES (:'content');</userinput>
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-l">
+      <varlistentry>
         <term><literal>%l</literal></term>
         <listitem>
          <para>
@@ -4628,7 +4516,7 @@ testdb=&gt; <userinput>INSERT INTO my_table VALUES (:'content');</userinput>
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-digits">
+      <varlistentry>
         <term><literal>%</literal><replaceable class="parameter">digits</replaceable></term>
         <listitem>
         <para>
@@ -4637,7 +4525,7 @@ testdb=&gt; <userinput>INSERT INTO my_table VALUES (:'content');</userinput>
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-name">
+      <varlistentry>
         <term><literal>%:</literal><replaceable class="parameter">name</replaceable><literal>:</literal></term>
         <listitem>
         <para>
@@ -4648,7 +4536,7 @@ testdb=&gt; <userinput>INSERT INTO my_table VALUES (:'content');</userinput>
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-command">
+      <varlistentry>
         <term><literal>%`</literal><replaceable class="parameter">command</replaceable><literal>`</literal></term>
         <listitem>
         <para>
@@ -4659,7 +4547,7 @@ testdb=&gt; <userinput>INSERT INTO my_table VALUES (:'content');</userinput>
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-square-brackets">
+      <varlistentry>
         <term><literal>%[</literal> ... <literal>%]</literal></term>
         <listitem>
          <para>
@@ -4681,7 +4569,7 @@ testdb=&gt; \set PROMPT1 '%[%033[1;33;40m%]%n@%/%R%[%033[0m%]%# '
         </listitem>
       </varlistentry>
 
-      <varlistentry id="app-psql-prompting-w">
+      <varlistentry>
         <term><literal>%w</literal></term>
         <listitem>
         <para>
@@ -4781,7 +4669,7 @@ $endif
 
   <variablelist>
 
-   <varlistentry id="app-psql-environment-columns">
+   <varlistentry>
     <term><envar>COLUMNS</envar></term>
 
     <listitem>
@@ -4794,7 +4682,7 @@ $endif
     </listitem>
    </varlistentry>
 
-   <varlistentry id="app-psql-environment-pgdatabase">
+   <varlistentry>
     <term><envar>PGDATABASE</envar></term>
     <term><envar>PGHOST</envar></term>
     <term><envar>PGPORT</envar></term>
@@ -4807,7 +4695,7 @@ $endif
     </listitem>
    </varlistentry>
 
-   <varlistentry id="app-psql-environment-pg-color">
+   <varlistentry>
     <term><envar>PG_COLOR</envar></term>
     <listitem>
      <para>
@@ -4818,7 +4706,7 @@ $endif
     </listitem>
    </varlistentry>
 
-   <varlistentry id="app-psql-environment-psql-editor">
+   <varlistentry>
     <term><envar>PSQL_EDITOR</envar></term>
     <term><envar>EDITOR</envar></term>
     <term><envar>VISUAL</envar></term>
@@ -4835,7 +4723,7 @@ $endif
     </listitem>
    </varlistentry>
 
-   <varlistentry id="app-psql-environment-psql-editor-linenumber-arg">
+   <varlistentry>
     <term><envar>PSQL_EDITOR_LINENUMBER_ARG</envar></term>
 
     <listitem>
@@ -4863,7 +4751,7 @@ PSQL_EDITOR_LINENUMBER_ARG='--line '
     </listitem>
    </varlistentry>
 
-   <varlistentry id="app-psql-environment-psql-history">
+   <varlistentry>
     <term><envar>PSQL_HISTORY</envar></term>
 
     <listitem>
@@ -4873,7 +4761,7 @@ PSQL_EDITOR_LINENUMBER_ARG='--line '
     </listitem>
    </varlistentry>
 
-   <varlistentry id="app-psql-environment-pager">
+   <varlistentry>
     <term><envar>PSQL_PAGER</envar></term>
     <term><envar>PAGER</envar></term>
 
@@ -4894,7 +4782,7 @@ PSQL_EDITOR_LINENUMBER_ARG='--line '
     </listitem>
    </varlistentry>
 
-   <varlistentry id="app-psql-environment-psql-watch-pager">
+   <varlistentry>
     <term><envar>PSQL_WATCH_PAGER</envar></term>
 
     <listitem>
@@ -4912,7 +4800,7 @@ PSQL_EDITOR_LINENUMBER_ARG='--line '
     </listitem>
    </varlistentry>
 
-   <varlistentry id="app-psql-environment-psqlrc">
+   <varlistentry>
     <term><envar>PSQLRC</envar></term>
 
     <listitem>
@@ -4922,7 +4810,7 @@ PSQL_EDITOR_LINENUMBER_ARG='--line '
     </listitem>
    </varlistentry>
 
-   <varlistentry id="app-psql-environment-shell">
+   <varlistentry>
     <term><envar>SHELL</envar></term>
 
     <listitem>
@@ -4932,7 +4820,7 @@ PSQL_EDITOR_LINENUMBER_ARG='--line '
     </listitem>
    </varlistentry>
 
-   <varlistentry id="app-psql-environment-tmpdir">
+   <varlistentry>
     <term><envar>TMPDIR</envar></term>
 
     <listitem>
@@ -4957,7 +4845,7 @@ PSQL_EDITOR_LINENUMBER_ARG='--line '
   <title>Files</title>
 
  <variablelist>
-  <varlistentry id="app-psql-files-psqlrc">
+  <varlistentry>
    <term><filename>psqlrc</filename> and <filename>~/.psqlrc</filename></term>
    <listitem>
     <para>
@@ -5005,7 +4893,7 @@ PSQL_EDITOR_LINENUMBER_ARG='--line '
    </listitem>
   </varlistentry>
 
-  <varlistentry id="app-psql-files-psql-history">
+  <varlistentry>
    <term><filename>.psql_history</filename></term>
    <listitem>
     <para>

@@ -1,25 +1,15 @@
-%top{
+%{
 /*-------------------------------------------------------------------------
  *
  * specscanner.l
  *	  a lexical scanner for an isolation test specification
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *-------------------------------------------------------------------------
  */
-#include "postgres_fe.h"
 
-/*
- * NB: include specparse.h only AFTER including isolationtester.h, because
- * isolationtester.h includes node definitions needed for YYSTYPE.
- */
-#include "isolationtester.h"
-#include "specparse.h"
-}
-
-%{
 static int	yyline = 1;			/* line number for error reporting */
 
 #define LITBUF_INIT	1024		/* initial size of litbuf */
@@ -85,7 +75,7 @@ teardown		{ return TEARDOWN; }
 
  /* Plain identifiers */
 {identifier}	{
-					spec_yylval.str = pg_strdup(yytext);
+					yylval.str = pg_strdup(yytext);
 					return(identifier);
 				}
 
@@ -97,13 +87,13 @@ teardown		{ return TEARDOWN; }
 <qident>\"\"	{ addlitchar(yytext[0]); }
 <qident>\"		{
 					litbuf[litbufpos] = '\0';
-					spec_yylval.str = pg_strdup(litbuf);
+					yylval.str = pg_strdup(litbuf);
 					BEGIN(INITIAL);
 					return(identifier);
 				}
 <qident>.		{ addlitchar(yytext[0]); }
-<qident>\n		{ spec_yyerror("unexpected newline in quoted identifier"); }
-<qident><<EOF>>	{ spec_yyerror("unterminated quoted identifier"); }
+<qident>\n		{ yyerror("unexpected newline in quoted identifier"); }
+<qident><<EOF>>	{ yyerror("unterminated quoted identifier"); }
 
  /* SQL blocks: { UPDATE ... } */
  /* We trim leading/trailing whitespace, otherwise they're unprocessed */
@@ -114,7 +104,7 @@ teardown		{ return TEARDOWN; }
 				}
 <sql>{space}*"}" {
 					litbuf[litbufpos] = '\0';
-					spec_yylval.str = pg_strdup(litbuf);
+					yylval.str = pg_strdup(litbuf);
 					BEGIN(INITIAL);
 					return(sqlblock);
 				}
@@ -126,12 +116,12 @@ teardown		{ return TEARDOWN; }
 					addlitchar(yytext[0]);
 				}
 <sql><<EOF>>	{
-					spec_yyerror("unterminated sql block");
+					yyerror("unterminated sql block");
 				}
 
  /* Numbers and punctuation */
 {digit}+		{
-					spec_yylval.integer = atoi(yytext);
+					yylval.integer = atoi(yytext);
 					return INTEGER;
 				}
 
@@ -160,7 +150,7 @@ addlitchar(char c)
 }
 
 void
-spec_yyerror(const char *message)
+yyerror(const char *message)
 {
 	fprintf(stderr, "%s at line %d\n", message, yyline);
 	exit(1);

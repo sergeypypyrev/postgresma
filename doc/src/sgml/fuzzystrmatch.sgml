@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/fuzzystrmatch.sgml -->
 
 <sect1 id="fuzzystrmatch" xreflabel="fuzzystrmatch">
- <title>fuzzystrmatch &mdash; determine string similarities and distance</title>
+ <title>fuzzystrmatch</title>
 
  <indexterm zone="fuzzystrmatch">
   <primary>fuzzystrmatch</primary>
@@ -26,7 +26,7 @@
   on the current database.
  </para>
 
- <sect2 id="fuzzystrmatch-soundex">
+ <sect2>
   <title>Soundex</title>
 
   <para>
@@ -88,7 +88,7 @@ SELECT * FROM s WHERE difference(s.nm, 'john') &gt; 2;
 </programlisting>
  </sect2>
 
- <sect2 id="fuzzystrmatch-levenshtein">
+ <sect2>
   <title>Levenshtein</title>
 
   <para>
@@ -159,7 +159,7 @@ test=# SELECT levenshtein_less_equal('extensive', 'exhaustive', 4);
 </screen>
  </sect2>
 
- <sect2 id="fuzzystrmatch-metaphone">
+ <sect2>
   <title>Metaphone</title>
 
   <para>
@@ -200,7 +200,7 @@ test=# SELECT metaphone('GUMBO', 4);
 </screen>
  </sect2>
 
- <sect2 id="fuzzystrmatch-double-metaphone">
+ <sect2>
   <title>Double Metaphone</title>
 
   <para>

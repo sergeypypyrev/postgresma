@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/earthdistance.sgml -->
 
 <sect1 id="earthdistance" xreflabel="earthdistance">
- <title>earthdistance &mdash; calculate great-circle distances</title>
+ <title>earthdistance</title>
 
  <indexterm zone="earthdistance">
   <primary>earthdistance</primary>
@@ -44,7 +44,7 @@
   </para>
  </caution>
 
- <sect2 id="earthdistance-cube-based">
+ <sect2>
   <title>Cube-Based Earth Distances</title>
 
   <para>
@@ -202,7 +202,7 @@
 
  </sect2>
 
- <sect2 id="earthdistance-point-based">
+ <sect2>
   <title>Point-Based Earth Distances</title>
 
   <para>

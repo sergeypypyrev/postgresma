@@ -367,10 +367,10 @@ ecpg_store_result(const PGresult *results, int act_field,
 						/* check strlen for each tuple */
 						for (act_tuple = 0; act_tuple < ntuples; act_tuple++)
 						{
-							int			slen = strlen(PQgetvalue(results, act_tuple, act_field)) + 1;
+							int			len = strlen(PQgetvalue(results, act_tuple, act_field)) + 1;
 
-							if (slen > var->varcharsize)
-								var->varcharsize = slen;
+							if (len > var->varcharsize)
+								var->varcharsize = len;
 						}
 						var->offset *= var->varcharsize;
 						len = var->offset * ntuples;
@@ -1714,7 +1714,8 @@ ecpg_process_output(struct statement *stmt, bool clear_result)
 					status = false;
 				else
 				{
-					PQclear(desc->result);
+					if (desc->result)
+						PQclear(desc->result);
 					desc->result = stmt->results;
 					clear_result = false;
 					ecpg_log("ecpg_process_output on line %d: putting result (%d tuples) into descriptor %s\n",

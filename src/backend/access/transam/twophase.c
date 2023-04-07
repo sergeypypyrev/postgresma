@@ -3,7 +3,7 @@
  * twophase.c
  *		Two-phase commit support functions.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -204,7 +204,7 @@ static void RecordTransactionCommitPrepared(TransactionId xid,
 											int nchildren,
 											TransactionId *children,
 											int nrels,
-											RelFileLocator *rels,
+											RelFileNode *rels,
 											int nstats,
 											xl_xact_stats_item *stats,
 											int ninvalmsgs,
@@ -215,7 +215,7 @@ static void RecordTransactionAbortPrepared(TransactionId xid,
 										   int nchildren,
 										   TransactionId *children,
 										   int nrels,
-										   RelFileLocator *rels,
+										   RelFileNode *rels,
 										   int nstats,
 										   xl_xact_stats_item *stats,
 										   const char *gid);
@@ -461,7 +461,7 @@ MarkAsPreparingGuts(GlobalTransaction gxact, TransactionId xid, const char *gid,
 	/* Initialize the PGPROC entry */
 	MemSet(proc, 0, sizeof(PGPROC));
 	proc->pgprocno = gxact->pgprocno;
-	dlist_node_init(&proc->links);
+	SHMQueueElemInit(&(proc->links));
 	proc->waitStatus = PROC_WAIT_STATUS_OK;
 	if (LocalTransactionIdIsValid(MyProc->lxid))
 	{
@@ -485,13 +485,13 @@ MarkAsPreparingGuts(GlobalTransaction gxact, TransactionId xid, const char *gid,
 	proc->roleId = owner;
 	proc->tempNamespaceId = InvalidOid;
 	proc->isBackgroundWorker = false;
-	proc->lwWaiting = LW_WS_NOT_WAITING;
+	proc->lwWaiting = false;
 	proc->lwWaitMode = 0;
 	proc->waitLock = NULL;
 	proc->waitProcLock = NULL;
 	pg_atomic_init_u64(&proc->waitStart, 0);
 	for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
-		dlist_init(&proc->myProcLocks[i]);
+		SHMQueueInit(&(proc->myProcLocks[i]));
 	/* subxid data must be filled later by GXactLoadSubxactData */
 	proc->subxidStatus.overflowed = false;
 	proc->subxidStatus.count = 0;
@@ -780,8 +780,8 @@ pg_prepared_xact(PG_FUNCTION_ARGS)
 	{
 		GlobalTransaction gxact = &status->array[status->currIdx++];
 		PGPROC	   *proc = &ProcGlobal->allProcs[gxact->pgprocno];
-		Datum		values[5] = {0};
-		bool		nulls[5] = {0};
+		Datum		values[5];
+		bool		nulls[5];
 		HeapTuple	tuple;
 		Datum		result;
 
@@ -791,6 +791,8 @@ pg_prepared_xact(PG_FUNCTION_ARGS)
 		/*
 		 * Form tuple with appropriate data.
 		 */
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, 0, sizeof(nulls));
 
 		values[0] = TransactionIdGetDatum(proc->xid);
 		values[1] = CStringGetTextDatum(gxact->gid);
@@ -949,8 +951,8 @@ TwoPhaseGetDummyProc(TransactionId xid, bool lock_held)
  *
  *	1. TwoPhaseFileHeader
  *	2. TransactionId[] (subtransactions)
- *	3. RelFileLocator[] (files to be deleted at commit)
- *	4. RelFileLocator[] (files to be deleted at abort)
+ *	3. RelFileNode[] (files to be deleted at commit)
+ *	4. RelFileNode[] (files to be deleted at abort)
  *	5. SharedInvalidationMessage[] (inval messages to be sent at commit)
  *	6. TwoPhaseRecordOnDisk
  *	7. ...
@@ -1045,8 +1047,8 @@ StartPrepare(GlobalTransaction gxact)
 	TransactionId xid = gxact->xid;
 	TwoPhaseFileHeader hdr;
 	TransactionId *children;
-	RelFileLocator *commitrels;
-	RelFileLocator *abortrels;
+	RelFileNode *commitrels;
+	RelFileNode *abortrels;
 	xl_xact_stats_item *abortstats = NULL;
 	xl_xact_stats_item *commitstats = NULL;
 	SharedInvalidationMessage *invalmsgs;
@@ -1100,12 +1102,12 @@ StartPrepare(GlobalTransaction gxact)
 	}
 	if (hdr.ncommitrels > 0)
 	{
-		save_state_data(commitrels, hdr.ncommitrels * sizeof(RelFileLocator));
+		save_state_data(commitrels, hdr.ncommitrels * sizeof(RelFileNode));
 		pfree(commitrels);
 	}
 	if (hdr.nabortrels > 0)
 	{
-		save_state_data(abortrels, hdr.nabortrels * sizeof(RelFileLocator));
+		save_state_data(abortrels, hdr.nabortrels * sizeof(RelFileNode));
 		pfree(abortrels);
 	}
 	if (hdr.ncommitstats > 0)
@@ -1487,9 +1489,9 @@ FinishPreparedTransaction(const char *gid, bool isCommit)
 	TwoPhaseFileHeader *hdr;
 	TransactionId latestXid;
 	TransactionId *children;
-	RelFileLocator *commitrels;
-	RelFileLocator *abortrels;
-	RelFileLocator *delrels;
+	RelFileNode *commitrels;
+	RelFileNode *abortrels;
+	RelFileNode *delrels;
 	int			ndelrels;
 	xl_xact_stats_item *commitstats;
 	xl_xact_stats_item *abortstats;
@@ -1523,10 +1525,10 @@ FinishPreparedTransaction(const char *gid, bool isCommit)
 	bufptr += MAXALIGN(hdr->gidlen);
 	children = (TransactionId *) bufptr;
 	bufptr += MAXALIGN(hdr->nsubxacts * sizeof(TransactionId));
-	commitrels = (RelFileLocator *) bufptr;
-	bufptr += MAXALIGN(hdr->ncommitrels * sizeof(RelFileLocator));
-	abortrels = (RelFileLocator *) bufptr;
-	bufptr += MAXALIGN(hdr->nabortrels * sizeof(RelFileLocator));
+	commitrels = (RelFileNode *) bufptr;
+	bufptr += MAXALIGN(hdr->ncommitrels * sizeof(RelFileNode));
+	abortrels = (RelFileNode *) bufptr;
+	bufptr += MAXALIGN(hdr->nabortrels * sizeof(RelFileNode));
 	commitstats = (xl_xact_stats_item *) bufptr;
 	bufptr += MAXALIGN(hdr->ncommitstats * sizeof(xl_xact_stats_item));
 	abortstats = (xl_xact_stats_item *) bufptr;
@@ -2098,8 +2100,8 @@ RecoverPreparedTransactions(void)
 		bufptr += MAXALIGN(hdr->gidlen);
 		subxids = (TransactionId *) bufptr;
 		bufptr += MAXALIGN(hdr->nsubxacts * sizeof(TransactionId));
-		bufptr += MAXALIGN(hdr->ncommitrels * sizeof(RelFileLocator));
-		bufptr += MAXALIGN(hdr->nabortrels * sizeof(RelFileLocator));
+		bufptr += MAXALIGN(hdr->ncommitrels * sizeof(RelFileNode));
+		bufptr += MAXALIGN(hdr->nabortrels * sizeof(RelFileNode));
 		bufptr += MAXALIGN(hdr->ncommitstats * sizeof(xl_xact_stats_item));
 		bufptr += MAXALIGN(hdr->nabortstats * sizeof(xl_xact_stats_item));
 		bufptr += MAXALIGN(hdr->ninvalmsgs * sizeof(SharedInvalidationMessage));
@@ -2283,7 +2285,7 @@ RecordTransactionCommitPrepared(TransactionId xid,
 								int nchildren,
 								TransactionId *children,
 								int nrels,
-								RelFileLocator *rels,
+								RelFileNode *rels,
 								int nstats,
 								xl_xact_stats_item *stats,
 								int ninvalmsgs,
@@ -2381,7 +2383,7 @@ RecordTransactionAbortPrepared(TransactionId xid,
 							   int nchildren,
 							   TransactionId *children,
 							   int nrels,
-							   RelFileLocator *rels,
+							   RelFileNode *rels,
 							   int nstats,
 							   xl_xact_stats_item *stats,
 							   const char *gid)

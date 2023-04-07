@@ -53,7 +53,7 @@
  * |	  |__|	|__||________________________||___________________|		   |
  * |_______________________________________________________________________|
  *
- * Copyright (c) 2019-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2019-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	src/backend/utils/adt/jsonpath.c
@@ -66,19 +66,16 @@
 #include "funcapi.h"
 #include "lib/stringinfo.h"
 #include "libpq/pqformat.h"
-#include "nodes/miscnodes.h"
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/json.h"
 #include "utils/jsonpath.h"
 
 
-static Datum jsonPathFromCstring(char *in, int len, struct Node *escontext);
+static Datum jsonPathFromCstring(char *in, int len);
 static char *jsonPathToCstring(StringInfo out, JsonPath *in,
 							   int estimated_len);
-static bool	flattenJsonPathParseItem(StringInfo buf, int *result,
-									 struct Node *escontext,
-									 JsonPathParseItem *item,
+static int	flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 									 int nestingLevel, bool insideArraySubscript);
 static void alignStringInfoInt(StringInfo buf);
 static int32 reserveSpaceForItemPointer(StringInfo buf);
@@ -98,7 +95,7 @@ jsonpath_in(PG_FUNCTION_ARGS)
 	char	   *in = PG_GETARG_CSTRING(0);
 	int			len = strlen(in);
 
-	return jsonPathFromCstring(in, len, fcinfo->context);
+	return jsonPathFromCstring(in, len);
 }
 
 /*
@@ -122,7 +119,7 @@ jsonpath_recv(PG_FUNCTION_ARGS)
 	else
 		elog(ERROR, "unsupported jsonpath version number: %d", version);
 
-	return jsonPathFromCstring(str, nbytes, NULL);
+	return jsonPathFromCstring(str, nbytes);
 }
 
 /*
@@ -168,29 +165,24 @@ jsonpath_send(PG_FUNCTION_ARGS)
  * representation of jsonpath.
  */
 static Datum
-jsonPathFromCstring(char *in, int len, struct Node *escontext)
+jsonPathFromCstring(char *in, int len)
 {
-	JsonPathParseResult *jsonpath = parsejsonpath(in, len, escontext);
+	JsonPathParseResult *jsonpath = parsejsonpath(in, len);
 	JsonPath   *res;
 	StringInfoData buf;
-
-	if (SOFT_ERROR_OCCURRED(escontext))
-		return (Datum) 0;
-
-	if (!jsonpath)
-		ereturn(escontext, (Datum) 0,
-				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-				 errmsg("invalid input syntax for type %s: \"%s\"", "jsonpath",
-						in)));
 
 	initStringInfo(&buf);
 	enlargeStringInfo(&buf, 4 * len /* estimation */ );
 
 	appendStringInfoSpaces(&buf, JSONPATH_HDRSZ);
 
-	if (!flattenJsonPathParseItem(&buf, NULL, escontext,
-								  jsonpath->expr, 0, false))
-		return (Datum) 0;
+	if (!jsonpath)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				 errmsg("invalid input syntax for type %s: \"%s\"", "jsonpath",
+						in)));
+
+	flattenJsonPathParseItem(&buf, jsonpath->expr, 0, false);
 
 	res = (JsonPath *) buf.data;
 	SET_VARSIZE(res, buf.len);
@@ -221,7 +213,7 @@ jsonPathToCstring(StringInfo out, JsonPath *in, int estimated_len)
 	enlargeStringInfo(out, estimated_len);
 
 	if (!(in->header & JSONPATH_LAX))
-		appendStringInfoString(out, "strict ");
+		appendBinaryStringInfo(out, "strict ", 7);
 
 	jspInit(&v, in);
 	printJsonPathItem(out, &v, false, true);
@@ -233,10 +225,9 @@ jsonPathToCstring(StringInfo out, JsonPath *in, int estimated_len)
  * Recursive function converting given jsonpath parse item and all its
  * children into a binary representation.
  */
-static bool
-flattenJsonPathParseItem(StringInfo buf,  int *result, struct Node *escontext,
-						 JsonPathParseItem *item, int nestingLevel,
-						 bool insideArraySubscript)
+static int
+flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
+						 int nestingLevel, bool insideArraySubscript)
 {
 	/* position from beginning of jsonpath data */
 	int32		pos = buf->len - JSONPATH_HDRSZ;
@@ -267,18 +258,18 @@ flattenJsonPathParseItem(StringInfo buf,  int *result, struct Node *escontext,
 		case jpiString:
 		case jpiVariable:
 		case jpiKey:
-			appendBinaryStringInfo(buf, &item->value.string.len,
+			appendBinaryStringInfo(buf, (char *) &item->value.string.len,
 								   sizeof(item->value.string.len));
 			appendBinaryStringInfo(buf, item->value.string.val,
 								   item->value.string.len);
 			appendStringInfoChar(buf, '\0');
 			break;
 		case jpiNumeric:
-			appendBinaryStringInfo(buf, item->value.numeric,
+			appendBinaryStringInfo(buf, (char *) item->value.numeric,
 								   VARSIZE(item->value.numeric));
 			break;
 		case jpiBool:
-			appendBinaryStringInfo(buf, &item->value.boolean,
+			appendBinaryStringInfo(buf, (char *) &item->value.boolean,
 								   sizeof(item->value.boolean));
 			break;
 		case jpiAnd:
@@ -304,22 +295,16 @@ flattenJsonPathParseItem(StringInfo buf,  int *result, struct Node *escontext,
 				int32		left = reserveSpaceForItemPointer(buf);
 				int32		right = reserveSpaceForItemPointer(buf);
 
-				if (!item->value.args.left)
-					chld = pos;
-				else if (! flattenJsonPathParseItem(buf, &chld, escontext,
-													item->value.args.left,
-													nestingLevel + argNestingLevel,
-													insideArraySubscript))
-					return false;
+				chld = !item->value.args.left ? pos :
+					flattenJsonPathParseItem(buf, item->value.args.left,
+											 nestingLevel + argNestingLevel,
+											 insideArraySubscript);
 				*(int32 *) (buf->data + left) = chld - pos;
 
-				if (!item->value.args.right)
-					chld = pos;
-				else if (! flattenJsonPathParseItem(buf, &chld, escontext,
-													item->value.args.right,
-													nestingLevel + argNestingLevel,
-													insideArraySubscript))
-					return false;
+				chld = !item->value.args.right ? pos :
+					flattenJsonPathParseItem(buf, item->value.args.right,
+											 nestingLevel + argNestingLevel,
+											 insideArraySubscript);
 				*(int32 *) (buf->data + right) = chld - pos;
 			}
 			break;
@@ -328,21 +313,19 @@ flattenJsonPathParseItem(StringInfo buf,  int *result, struct Node *escontext,
 				int32		offs;
 
 				appendBinaryStringInfo(buf,
-									   &item->value.like_regex.flags,
+									   (char *) &item->value.like_regex.flags,
 									   sizeof(item->value.like_regex.flags));
 				offs = reserveSpaceForItemPointer(buf);
 				appendBinaryStringInfo(buf,
-									   &item->value.like_regex.patternlen,
+									   (char *) &item->value.like_regex.patternlen,
 									   sizeof(item->value.like_regex.patternlen));
 				appendBinaryStringInfo(buf, item->value.like_regex.pattern,
 									   item->value.like_regex.patternlen);
 				appendStringInfoChar(buf, '\0');
 
-				if (! flattenJsonPathParseItem(buf, &chld, escontext,
-											   item->value.like_regex.expr,
-											   nestingLevel,
-											   insideArraySubscript))
-					return false;
+				chld = flattenJsonPathParseItem(buf, item->value.like_regex.expr,
+												nestingLevel,
+												insideArraySubscript);
 				*(int32 *) (buf->data + offs) = chld - pos;
 			}
 			break;
@@ -358,13 +341,10 @@ flattenJsonPathParseItem(StringInfo buf,  int *result, struct Node *escontext,
 			{
 				int32		arg = reserveSpaceForItemPointer(buf);
 
-				if (!item->value.arg)
-					chld = pos;
-				else if (! flattenJsonPathParseItem(buf, &chld, escontext,
-													item->value.arg,
-													nestingLevel + argNestingLevel,
-													insideArraySubscript))
-					return false;
+				chld = !item->value.arg ? pos :
+					flattenJsonPathParseItem(buf, item->value.arg,
+											 nestingLevel + argNestingLevel,
+											 insideArraySubscript);
 				*(int32 *) (buf->data + arg) = chld - pos;
 			}
 			break;
@@ -377,13 +357,13 @@ flattenJsonPathParseItem(StringInfo buf,  int *result, struct Node *escontext,
 			break;
 		case jpiCurrent:
 			if (nestingLevel <= 0)
-				ereturn(escontext, false,
+				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("@ is not allowed in root expressions")));
 			break;
 		case jpiLast:
 			if (!insideArraySubscript)
-				ereturn(escontext, false,
+				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("LAST is allowed only in array subscripts")));
 			break;
@@ -393,7 +373,7 @@ flattenJsonPathParseItem(StringInfo buf,  int *result, struct Node *escontext,
 				int			offset;
 				int			i;
 
-				appendBinaryStringInfo(buf, &nelems, sizeof(nelems));
+				appendBinaryStringInfo(buf, (char *) &nelems, sizeof(nelems));
 
 				offset = buf->len;
 
@@ -403,22 +383,15 @@ flattenJsonPathParseItem(StringInfo buf,  int *result, struct Node *escontext,
 				{
 					int32	   *ppos;
 					int32		topos;
-					int32		frompos;
-
-					if (! flattenJsonPathParseItem(buf, &frompos, escontext,
-												   item->value.array.elems[i].from,
-												   nestingLevel, true))
-						return false;
-					frompos -= pos;
+					int32		frompos =
+					flattenJsonPathParseItem(buf,
+											 item->value.array.elems[i].from,
+											 nestingLevel, true) - pos;
 
 					if (item->value.array.elems[i].to)
-					{
-						if (! flattenJsonPathParseItem(buf, &topos, escontext,
-													   item->value.array.elems[i].to,
-													   nestingLevel, true))
-							return false;
-						topos -= pos;
-					}
+						topos = flattenJsonPathParseItem(buf,
+														 item->value.array.elems[i].to,
+														 nestingLevel, true) - pos;
 					else
 						topos = 0;
 
@@ -431,10 +404,10 @@ flattenJsonPathParseItem(StringInfo buf,  int *result, struct Node *escontext,
 			break;
 		case jpiAny:
 			appendBinaryStringInfo(buf,
-								   &item->value.anybounds.first,
+								   (char *) &item->value.anybounds.first,
 								   sizeof(item->value.anybounds.first));
 			appendBinaryStringInfo(buf,
-								   &item->value.anybounds.last,
+								   (char *) &item->value.anybounds.last,
 								   sizeof(item->value.anybounds.last));
 			break;
 		case jpiType:
@@ -451,17 +424,12 @@ flattenJsonPathParseItem(StringInfo buf,  int *result, struct Node *escontext,
 
 	if (item->next)
 	{
-		if (! flattenJsonPathParseItem(buf, &chld, escontext,
-									   item->next, nestingLevel,
-									   insideArraySubscript))
-			return false;
-		chld -= pos;
+		chld = flattenJsonPathParseItem(buf, item->next, nestingLevel,
+										insideArraySubscript) - pos;
 		*(int32 *) (buf->data + next) = chld;
 	}
 
-	if (result)
-		*result = pos;
-	return true;
+	return pos;
 }
 
 /*
@@ -496,7 +464,7 @@ reserveSpaceForItemPointer(StringInfo buf)
 	int32		pos = buf->len;
 	int32		ptr = 0;
 
-	appendBinaryStringInfo(buf, &ptr, sizeof(ptr));
+	appendBinaryStringInfo(buf, (char *) &ptr, sizeof(ptr));
 
 	return pos;
 }
@@ -542,9 +510,9 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 			break;
 		case jpiBool:
 			if (jspGetBool(v))
-				appendStringInfoString(buf, "true");
+				appendBinaryStringInfo(buf, "true", 4);
 			else
-				appendStringInfoString(buf, "false");
+				appendBinaryStringInfo(buf, "false", 5);
 			break;
 		case jpiAnd:
 		case jpiOr:
@@ -585,13 +553,13 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 							  operationPriority(elem.type) <=
 							  operationPriority(v->type));
 
-			appendStringInfoString(buf, " like_regex ");
+			appendBinaryStringInfo(buf, " like_regex ", 12);
 
 			escape_json(buf, v->content.like_regex.pattern);
 
 			if (v->content.like_regex.flags)
 			{
-				appendStringInfoString(buf, " flag \"");
+				appendBinaryStringInfo(buf, " flag \"", 7);
 
 				if (v->content.like_regex.flags & JSP_REGEX_ICASE)
 					appendStringInfoChar(buf, 'i');
@@ -623,13 +591,13 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 				appendStringInfoChar(buf, ')');
 			break;
 		case jpiFilter:
-			appendStringInfoString(buf, "?(");
+			appendBinaryStringInfo(buf, "?(", 2);
 			jspGetArg(v, &elem);
 			printJsonPathItem(buf, &elem, false, false);
 			appendStringInfoChar(buf, ')');
 			break;
 		case jpiNot:
-			appendStringInfoString(buf, "!(");
+			appendBinaryStringInfo(buf, "!(", 2);
 			jspGetArg(v, &elem);
 			printJsonPathItem(buf, &elem, false, false);
 			appendStringInfoChar(buf, ')');
@@ -638,10 +606,10 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 			appendStringInfoChar(buf, '(');
 			jspGetArg(v, &elem);
 			printJsonPathItem(buf, &elem, false, false);
-			appendStringInfoString(buf, ") is unknown");
+			appendBinaryStringInfo(buf, ") is unknown", 12);
 			break;
 		case jpiExists:
-			appendStringInfoString(buf, "exists (");
+			appendBinaryStringInfo(buf, "exists (", 8);
 			jspGetArg(v, &elem);
 			printJsonPathItem(buf, &elem, false, false);
 			appendStringInfoChar(buf, ')');
@@ -655,10 +623,10 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 			appendStringInfoChar(buf, '$');
 			break;
 		case jpiLast:
-			appendStringInfoString(buf, "last");
+			appendBinaryStringInfo(buf, "last", 4);
 			break;
 		case jpiAnyArray:
-			appendStringInfoString(buf, "[*]");
+			appendBinaryStringInfo(buf, "[*]", 3);
 			break;
 		case jpiAnyKey:
 			if (inKey)
@@ -680,7 +648,7 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 
 				if (range)
 				{
-					appendStringInfoString(buf, " to ");
+					appendBinaryStringInfo(buf, " to ", 4);
 					printJsonPathItem(buf, &to, false, false);
 				}
 			}
@@ -692,7 +660,7 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 
 			if (v->content.anybounds.first == 0 &&
 				v->content.anybounds.last == PG_UINT32_MAX)
-				appendStringInfoString(buf, "**");
+				appendBinaryStringInfo(buf, "**", 2);
 			else if (v->content.anybounds.first == v->content.anybounds.last)
 			{
 				if (v->content.anybounds.first == PG_UINT32_MAX)
@@ -713,25 +681,25 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 								 v->content.anybounds.last);
 			break;
 		case jpiType:
-			appendStringInfoString(buf, ".type()");
+			appendBinaryStringInfo(buf, ".type()", 7);
 			break;
 		case jpiSize:
-			appendStringInfoString(buf, ".size()");
+			appendBinaryStringInfo(buf, ".size()", 7);
 			break;
 		case jpiAbs:
-			appendStringInfoString(buf, ".abs()");
+			appendBinaryStringInfo(buf, ".abs()", 6);
 			break;
 		case jpiFloor:
-			appendStringInfoString(buf, ".floor()");
+			appendBinaryStringInfo(buf, ".floor()", 8);
 			break;
 		case jpiCeiling:
-			appendStringInfoString(buf, ".ceiling()");
+			appendBinaryStringInfo(buf, ".ceiling()", 10);
 			break;
 		case jpiDouble:
-			appendStringInfoString(buf, ".double()");
+			appendBinaryStringInfo(buf, ".double()", 9);
 			break;
 		case jpiDatetime:
-			appendStringInfoString(buf, ".datetime(");
+			appendBinaryStringInfo(buf, ".datetime(", 10);
 			if (v->content.arg)
 			{
 				jspGetArg(v, &elem);
@@ -740,7 +708,7 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 			appendStringInfoChar(buf, ')');
 			break;
 		case jpiKeyValue:
-			appendStringInfoString(buf, ".keyvalue()");
+			appendBinaryStringInfo(buf, ".keyvalue()", 11);
 			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", v->type);

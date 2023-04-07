@@ -4,7 +4,7 @@
  *	  prototypes for functions in backend/catalog/catalog.c
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/catalog.h
@@ -38,8 +38,7 @@ extern bool IsPinnedObject(Oid classId, Oid objectId);
 
 extern Oid	GetNewOidWithIndex(Relation relation, Oid indexId,
 							   AttrNumber oidcolumn);
-extern RelFileNumber GetNewRelFileNumber(Oid reltablespace,
-										 Relation pg_class,
-										 char relpersistence);
+extern Oid	GetNewRelFileNode(Oid reltablespace, Relation pg_class,
+							  char relpersistence);
 
 #endif							/* CATALOG_H */

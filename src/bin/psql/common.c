@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2022, PostgreSQL Global Development Group
  *
  * src/bin/psql/common.c
  */
@@ -63,7 +63,6 @@ openQueryOutputFile(const char *fname, FILE **fout, bool *is_pipe)
 	}
 	else if (*fname == '|')
 	{
-		fflush(NULL);
 		*fout = popen(fname + 1, "w");
 		*is_pipe = true;
 	}
@@ -250,7 +249,7 @@ NoticeProcessor(void *arg, const char *message)
  * On Windows, currently this does not work, so control-C is less useful
  * there.
  */
-volatile sig_atomic_t sigint_interrupt_enabled = false;
+volatile bool sigint_interrupt_enabled = false;
 
 sigjmp_buf	sigint_interrupt_jmp;
 
@@ -468,7 +467,8 @@ ClearOrSaveResult(PGresult *result)
 		{
 			case PGRES_NONFATAL_ERROR:
 			case PGRES_FATAL_ERROR:
-				PQclear(pset.last_error_result);
+				if (pset.last_error_result)
+					PQclear(pset.last_error_result);
 				pset.last_error_result = result;
 				break;
 
@@ -1220,16 +1220,6 @@ sendquery_cleanup:
 		pset.gsavepopt = NULL;
 	}
 
-	/* clean up after \bind */
-	if (pset.bind_flag)
-	{
-		for (i = 0; i < pset.bind_nparams; i++)
-			free(pset.bind_params[i]);
-		free(pset.bind_params);
-		pset.bind_params = NULL;
-		pset.bind_flag = false;
-	}
-
 	/* reset \gset trigger */
 	if (pset.gset_prefix)
 	{
@@ -1276,8 +1266,6 @@ DescribeQuery(const char *query, double *elapsed_msec)
 
 	if (timing)
 		INSTR_TIME_SET_CURRENT(before);
-	else
-		INSTR_TIME_SET_ZERO(before);
 
 	/*
 	 * To parse the query but not execute it, we prepare it, using the unnamed
@@ -1408,13 +1396,8 @@ ExecQueryAndProcessResults(const char *query,
 
 	if (timing)
 		INSTR_TIME_SET_CURRENT(before);
-	else
-		INSTR_TIME_SET_ZERO(before);
 
-	if (pset.bind_flag)
-		success = PQsendQueryParams(pset.db, query, pset.bind_nparams, NULL, (const char * const *) pset.bind_params, NULL, NULL, 0);
-	else
-		success = PQsendQuery(pset.db, query);
+	success = PQsendQuery(pset.db, query);
 
 	if (!success)
 	{
@@ -1451,7 +1434,7 @@ ExecQueryAndProcessResults(const char *query,
 		if (!AcceptResult(result, false))
 		{
 			/*
-			 * Some error occurred, either a server-side failure or a failure
+			 * Some error occured, either a server-side failure or a failure
 			 * to submit the command string.  Record that.
 			 */
 			const char *error = PQresultErrorMessage(result);
@@ -1706,8 +1689,6 @@ ExecQueryUsingCursor(const char *query, double *elapsed_msec)
 
 	if (timing)
 		INSTR_TIME_SET_CURRENT(before);
-	else
-		INSTR_TIME_SET_ZERO(before);
 
 	/* if we're not in a transaction, start one */
 	if (PQtransactionStatus(pset.db) == PQTRANS_IDLE)

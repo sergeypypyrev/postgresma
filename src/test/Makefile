@@ -17,20 +17,25 @@ SUBDIRS = perl regress isolation modules authentication recovery subscription
 ifeq ($(with_icu),yes)
 SUBDIRS += icu
 endif
-ifeq ($(with_gssapi),yes)
-SUBDIRS += kerberos
-endif
-ifeq ($(with_ldap),yes)
-SUBDIRS += ldap
-endif
-ifeq ($(with_ssl),openssl)
-SUBDIRS += ssl
-endif
 
 # Test suites that are not safe by default but can be run if selected
-# by the user via the whitespace-separated list in variable PG_TEST_EXTRA.
-# Export PG_TEST_EXTRA to check it in individual tap tests.
-export PG_TEST_EXTRA
+# by the user via the whitespace-separated list in variable
+# PG_TEST_EXTRA:
+ifeq ($(with_gssapi),yes)
+ifneq (,$(filter kerberos,$(PG_TEST_EXTRA)))
+SUBDIRS += kerberos
+endif
+endif
+ifeq ($(with_ldap),yes)
+ifneq (,$(filter ldap,$(PG_TEST_EXTRA)))
+SUBDIRS += ldap
+endif
+endif
+ifeq ($(with_ssl),openssl)
+ifneq (,$(filter ssl,$(PG_TEST_EXTRA)))
+SUBDIRS += ssl
+endif
+endif
 
 # We don't build or execute these by default, but we do want "make
 # clean" etc to recurse into them.  (We must filter out those that we

@@ -3,7 +3,7 @@
  * analyze.c
  *	  the Postgres statistics generator
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -159,15 +159,16 @@ analyze_rel(Oid relid, RangeVar *relation,
 		return;
 
 	/*
-	 * Check if relation needs to be skipped based on privileges.  This check
+	 * Check if relation needs to be skipped based on ownership.  This check
 	 * happens also when building the relation list to analyze for a manual
 	 * operation, and needs to be done additionally here as ANALYZE could
-	 * happen across multiple transactions where privileges could have changed
-	 * in-between.  Make sure to generate only logs for ANALYZE in this case.
+	 * happen across multiple transactions where relation ownership could have
+	 * changed in-between.  Make sure to generate only logs for ANALYZE in
+	 * this case.
 	 */
-	if (!vacuum_is_permitted_for_relation(RelationGetRelid(onerel),
-										  onerel->rd_rel,
-										  params->options & VACOPT_ANALYZE))
+	if (!vacuum_is_relation_owner(RelationGetRelid(onerel),
+								  onerel->rd_rel,
+								  params->options & VACOPT_ANALYZE))
 	{
 		relation_close(onerel, ShareUpdateExclusiveLock);
 		return;
@@ -359,7 +360,8 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 		}
 
 		pg_rusage_init(&ru0);
-		starttime = GetCurrentTimestamp();
+		if (params->log_min_duration >= 0)
+			starttime = GetCurrentTimestamp();
 	}
 
 	/*
@@ -707,7 +709,6 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 			IndexVacuumInfo ivinfo;
 
 			ivinfo.index = Irel[ind];
-			ivinfo.heaprel = onerel;
 			ivinfo.analyze_only = true;
 			ivinfo.estimated_count = true;
 			ivinfo.message_level = elevel;
@@ -1305,7 +1306,7 @@ acquire_sample_rows(Relation onerel, int elevel,
 	 * tuples are already sorted.
 	 */
 	if (numrows == targrows)
-		qsort_interruptible(rows, numrows, sizeof(HeapTuple),
+		qsort_interruptible((void *) rows, numrows, sizeof(HeapTuple),
 							compare_rows, NULL);
 
 	/*
@@ -1389,10 +1390,6 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 				i;
 	ListCell   *lc;
 	bool		has_child;
-
-	/* Initialize output parameters to zero now, in case we exit early */
-	*totalrows = 0;
-	*totaldeadrows = 0;
 
 	/*
 	 * Find all members of inheritance set.  We only need AccessShareLock on
@@ -1527,6 +1524,8 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 	pgstat_progress_update_param(PROGRESS_ANALYZE_CHILD_TABLES_TOTAL,
 								 nrels);
 	numrows = 0;
+	*totalrows = 0;
+	*totaldeadrows = 0;
 	for (i = 0; i < nrels; i++)
 	{
 		Relation	childrel = rels[i];
@@ -1626,7 +1625,6 @@ update_attstats(Oid relid, bool inh, int natts, VacAttrStats **vacattrstats)
 {
 	Relation	sd;
 	int			attno;
-	CatalogIndexState indstate = NULL;
 
 	if (natts <= 0)
 		return;					/* nothing to do */
@@ -1691,7 +1689,10 @@ update_attstats(Oid relid, bool inh, int natts, VacAttrStats **vacattrstats)
 
 				for (n = 0; n < nnum; n++)
 					numdatums[n] = Float4GetDatum(stats->stanumbers[k][n]);
-				arry = construct_array_builtin(numdatums, nnum, FLOAT4OID);
+				/* XXX knows more than it should about type float4: */
+				arry = construct_array(numdatums, nnum,
+									   FLOAT4OID,
+									   sizeof(float4), true, TYPALIGN_INT);
 				values[i++] = PointerGetDatum(arry);	/* stanumbersN */
 			}
 			else
@@ -1728,10 +1729,6 @@ update_attstats(Oid relid, bool inh, int natts, VacAttrStats **vacattrstats)
 								 Int16GetDatum(stats->attr->attnum),
 								 BoolGetDatum(inh));
 
-		/* Open index information when we know we need it */
-		if (indstate == NULL)
-			indstate = CatalogOpenIndexes(sd);
-
 		if (HeapTupleIsValid(oldtup))
 		{
 			/* Yes, replace it */
@@ -1741,20 +1738,18 @@ update_attstats(Oid relid, bool inh, int natts, VacAttrStats **vacattrstats)
 									 nulls,
 									 replaces);
 			ReleaseSysCache(oldtup);
-			CatalogTupleUpdateWithInfo(sd, &stup->t_self, stup, indstate);
+			CatalogTupleUpdate(sd, &stup->t_self, stup);
 		}
 		else
 		{
 			/* No, insert new tuple */
 			stup = heap_form_tuple(RelationGetDescr(sd), values, nulls);
-			CatalogTupleInsertWithInfo(sd, stup, indstate);
+			CatalogTupleInsert(sd, stup);
 		}
 
 		heap_freetuple(stup);
 	}
 
-	if (indstate != NULL)
-		CatalogCloseIndexes(indstate);
 	table_close(sd, RowExclusiveLock);
 }
 
@@ -2482,8 +2477,8 @@ compute_scalar_stats(VacAttrStatsP stats,
 		/* Sort the collected values */
 		cxt.ssup = &ssup;
 		cxt.tupnoLink = tupnoLink;
-		qsort_interruptible(values, values_cnt, sizeof(ScalarItem),
-							compare_scalars, &cxt);
+		qsort_interruptible((void *) values, values_cnt, sizeof(ScalarItem),
+							compare_scalars, (void *) &cxt);
 
 		/*
 		 * Now scan the values in order, find the most common ones, and also
@@ -2727,7 +2722,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 						deltafrac;
 
 			/* Sort the MCV items into position order to speed next loop */
-			qsort_interruptible(track, num_mcv, sizeof(ScalarMCVItem),
+			qsort_interruptible((void *) track, num_mcv, sizeof(ScalarMCVItem),
 								compare_mcvs, NULL);
 
 			/*

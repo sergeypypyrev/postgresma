@@ -22,6 +22,7 @@ OBJS = \
 	interrupt.o \
 	pgarch.o \
 	postmaster.o \
+	shell_archive.o \
 	startup.o \
 	syslogger.o \
 	walwriter.o

@@ -6,31 +6,24 @@
 # Input: UnicodeData.txt and CompositionExclusions.txt
 # Output: unicode_norm_table.h and unicode_norm_hashfunc.h
 #
-# Copyright (c) 2000-2023, PostgreSQL Global Development Group
+# Copyright (c) 2000-2022, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
-use Getopt::Long;
 
 use FindBin;
 use lib "$FindBin::RealBin/../../tools/";
 use PerfectHash;
 
-my $output_path = '.';
-
-GetOptions(
-	'outdir:s'       => \$output_path);
-
-my $output_table_file = "$output_path/unicode_norm_table.h";
-my $output_func_file  = "$output_path/unicode_norm_hashfunc.h";
-
+my $output_table_file = "unicode_norm_table.h";
+my $output_func_file  = "unicode_norm_hashfunc.h";
 
 my $FH;
 
 # Read list of codes that should be excluded from re-composition.
 my @composition_exclusion_codes = ();
-open($FH, '<', "$output_path/CompositionExclusions.txt")
-  or die "Could not open $output_path/CompositionExclusions.txt: $!.";
+open($FH, '<', "CompositionExclusions.txt")
+  or die "Could not open CompositionExclusions.txt: $!.";
 while (my $line = <$FH>)
 {
 	if ($line =~ /^([[:xdigit:]]+)/)
@@ -45,8 +38,8 @@ close $FH;
 # and character decomposition mapping
 my @characters     = ();
 my %character_hash = ();
-open($FH, '<', "$output_path/UnicodeData.txt")
-  or die "Could not open $output_path/UnicodeData.txt: $!.";
+open($FH, '<', "UnicodeData.txt")
+  or die "Could not open UnicodeData.txt: $!.";
 while (my $line = <$FH>)
 {
 
@@ -89,7 +82,7 @@ print $OT <<HEADER;
  * unicode_norm_table.h
  *	  Composition table used for Unicode normalization
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/common/unicode_norm_table.h
@@ -132,7 +125,7 @@ print $OF <<HEADER;
  * unicode_norm_hashfunc.h
  *	  Perfect hash functions used for Unicode normalization
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/common/unicode_norm_hashfunc.h

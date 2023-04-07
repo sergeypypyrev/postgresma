@@ -4,7 +4,7 @@
  *	  WAL replay logic for SP-GiST
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -875,11 +875,14 @@ spgRedoVacuumRedirect(XLogReaderState *record)
 	 */
 	if (InHotStandby)
 	{
-		RelFileLocator locator;
+		if (TransactionIdIsValid(xldata->newestRedirectXid))
+		{
+			RelFileNode node;
 
-		XLogRecGetBlockTag(record, 0, &locator, NULL, NULL);
-		ResolveRecoveryConflictWithSnapshot(xldata->snapshotConflictHorizon,
-											locator);
+			XLogRecGetBlockTag(record, 0, &node, NULL, NULL);
+			ResolveRecoveryConflictWithSnapshot(xldata->newestRedirectXid,
+												node);
+		}
 	}
 
 	if (XLogReadBufferForRedo(record, 0, &buffer) == BLK_NEEDS_REDO)

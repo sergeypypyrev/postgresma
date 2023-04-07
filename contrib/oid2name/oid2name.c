@@ -30,7 +30,7 @@ struct options
 {
 	eary	   *tables;
 	eary	   *oids;
-	eary	   *filenumbers;
+	eary	   *filenodes;
 
 	bool		quiet;
 	bool		systables;
@@ -48,15 +48,15 @@ struct options
 
 /* function prototypes */
 static void help(const char *progname);
-void		get_opts(int argc, char **argv, struct options *my_opts);
+void		get_opts(int, char **, struct options *);
 void		add_one_elt(char *eltname, eary *eary);
 char	   *get_comma_elts(eary *eary);
-PGconn	   *sql_conn(struct options *my_opts);
-int			sql_exec(PGconn *conn, const char *todo, bool quiet);
-void		sql_exec_dumpalldbs(PGconn *conn, struct options *opts);
-void		sql_exec_dumpalltables(PGconn *conn, struct options *opts);
-void		sql_exec_searchtables(PGconn *conn, struct options *opts);
-void		sql_exec_dumpalltbspc(PGconn *conn, struct options *opts);
+PGconn	   *sql_conn(struct options *);
+int			sql_exec(PGconn *, const char *sql, bool quiet);
+void		sql_exec_dumpalldbs(PGconn *, struct options *);
+void		sql_exec_dumpalltables(PGconn *, struct options *);
+void		sql_exec_searchtables(PGconn *, struct options *);
+void		sql_exec_dumpalltbspc(PGconn *, struct options *);
 
 /* function to parse command line options and check for some usage errors. */
 void
@@ -125,9 +125,9 @@ get_opts(int argc, char **argv, struct options *my_opts)
 				my_opts->dbname = pg_strdup(optarg);
 				break;
 
-				/* specify one filenumber to show */
+				/* specify one filenode to show */
 			case 'f':
-				add_one_elt(optarg, my_opts->filenumbers);
+				add_one_elt(optarg, my_opts->filenodes);
 				break;
 
 				/* host to connect to */
@@ -217,7 +217,7 @@ help(const char *progname)
 		   "\nConnection options:\n"
 		   "  -d, --dbname=DBNAME        database to connect to\n"
 		   "  -h, --host=HOSTNAME        database server host or socket directory\n"
-		   "  -H                         (same as -h, deprecated)\n"
+		   "  -H                         same as -h, deprecated option\n"
 		   "  -p, --port=PORT            database server port number\n"
 		   "  -U, --username=USERNAME    connect as specified database user\n"
 		   "\nThe default action is to show all database OIDs.\n\n"
@@ -424,7 +424,7 @@ sql_exec(PGconn *conn, const char *todo, bool quiet)
 		}
 		fprintf(stdout, "\n");
 		pad = (char *) pg_malloc(l + 1);
-		memset(pad, '-', l);
+		MemSet(pad, '-', l);
 		pad[l] = '\0';
 		fprintf(stdout, "%s\n", pad);
 		free(pad);
@@ -494,7 +494,7 @@ sql_exec_dumpalltables(PGconn *conn, struct options *opts)
 }
 
 /*
- * Show oid, filenumber, name, schema and tablespace for each of the
+ * Show oid, filenode, name, schema and tablespace for each of the
  * given objects in the current database.
  */
 void
@@ -504,19 +504,19 @@ sql_exec_searchtables(PGconn *conn, struct options *opts)
 	char	   *qualifiers,
 			   *ptr;
 	char	   *comma_oids,
-			   *comma_filenumbers,
+			   *comma_filenodes,
 			   *comma_tables;
 	bool		written = false;
 	char	   *addfields = ",c.oid AS \"Oid\", nspname AS \"Schema\", spcname as \"Tablespace\" ";
 
-	/* get tables qualifiers, whether names, filenumbers, or OIDs */
+	/* get tables qualifiers, whether names, filenodes, or OIDs */
 	comma_oids = get_comma_elts(opts->oids);
 	comma_tables = get_comma_elts(opts->tables);
-	comma_filenumbers = get_comma_elts(opts->filenumbers);
+	comma_filenodes = get_comma_elts(opts->filenodes);
 
 	/* 80 extra chars for SQL expression */
 	qualifiers = (char *) pg_malloc(strlen(comma_oids) + strlen(comma_tables) +
-									strlen(comma_filenumbers) + 80);
+									strlen(comma_filenodes) + 80);
 	ptr = qualifiers;
 
 	if (opts->oids->num > 0)
@@ -524,12 +524,11 @@ sql_exec_searchtables(PGconn *conn, struct options *opts)
 		ptr += sprintf(ptr, "c.oid IN (%s)", comma_oids);
 		written = true;
 	}
-	if (opts->filenumbers->num > 0)
+	if (opts->filenodes->num > 0)
 	{
 		if (written)
 			ptr += sprintf(ptr, " OR ");
-		ptr += sprintf(ptr, "pg_catalog.pg_relation_filenode(c.oid) IN (%s)",
-					   comma_filenumbers);
+		ptr += sprintf(ptr, "pg_catalog.pg_relation_filenode(c.oid) IN (%s)", comma_filenodes);
 		written = true;
 	}
 	if (opts->tables->num > 0)
@@ -540,7 +539,7 @@ sql_exec_searchtables(PGconn *conn, struct options *opts)
 	}
 	free(comma_oids);
 	free(comma_tables);
-	free(comma_filenumbers);
+	free(comma_filenodes);
 
 	/* now build the query */
 	todo = psprintf("SELECT pg_catalog.pg_relation_filenode(c.oid) as \"Filenode\", relname as \"Table Name\" %s\n"
@@ -589,11 +588,11 @@ main(int argc, char **argv)
 
 	my_opts->oids = (eary *) pg_malloc(sizeof(eary));
 	my_opts->tables = (eary *) pg_malloc(sizeof(eary));
-	my_opts->filenumbers = (eary *) pg_malloc(sizeof(eary));
+	my_opts->filenodes = (eary *) pg_malloc(sizeof(eary));
 
 	my_opts->oids->num = my_opts->oids->alloc = 0;
 	my_opts->tables->num = my_opts->tables->alloc = 0;
-	my_opts->filenumbers->num = my_opts->filenumbers->alloc = 0;
+	my_opts->filenodes->num = my_opts->filenodes->alloc = 0;
 
 	/* parse the opts */
 	get_opts(argc, argv, my_opts);
@@ -619,7 +618,7 @@ main(int argc, char **argv)
 	/* display the given elements in the database */
 	if (my_opts->oids->num > 0 ||
 		my_opts->tables->num > 0 ||
-		my_opts->filenumbers->num > 0)
+		my_opts->filenodes->num > 0)
 	{
 		if (!my_opts->quiet)
 			printf("From database \"%s\":\n", my_opts->dbname);

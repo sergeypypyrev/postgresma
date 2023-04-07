@@ -204,7 +204,8 @@ ConnectDatabase(Archive *AHX,
 	 */
 	if (PQconnectionUsedPassword(AH->connection))
 	{
-		free(AH->savedPassword);
+		if (AH->savedPassword)
+			free(AH->savedPassword);
 		AH->savedPassword = pg_strdup(PQpass(AH->connection));
 	}
 
@@ -542,11 +543,11 @@ CommitTransaction(Archive *AHX)
 }
 
 void
-DropLOIfExists(ArchiveHandle *AH, Oid oid)
+DropBlobIfExists(ArchiveHandle *AH, Oid oid)
 {
 	/*
 	 * If we are not restoring to a direct database connection, we have to
-	 * guess about how to detect whether the LO exists.  Assume new-style.
+	 * guess about how to detect whether the blob exists.  Assume new-style.
 	 */
 	if (AH->connection == NULL ||
 		PQserverVersion(AH->connection) >= 90000)

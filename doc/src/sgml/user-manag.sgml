@@ -88,13 +88,9 @@ dropuser <replaceable>name</replaceable>
 
   <para>
    To determine the set of existing roles, examine the <structname>pg_roles</structname>
-   system catalog, for example:
+   system catalog, for example
 <synopsis>
 SELECT rolname FROM pg_roles;
-</synopsis>
-   or to see just those capable of logging in:
-<synopsis>
-SELECT rolname FROM pg_roles WHERE rolcanlogin;
 </synopsis>
    The <xref linkend="app-psql"/> program's <literal>\du</literal> meta-command
    is also useful for listing the existing roles.
@@ -102,12 +98,11 @@ SELECT rolname FROM pg_roles WHERE rolcanlogin;
 
   <para>
    In order to bootstrap the database system, a freshly initialized
-   system always contains one predefined login-capable role. This role
-   is always a <quote>superuser</quote>, and by default it will have
-   the same name as the operating system user that initialized the
-   database cluster, unless another name is specified while
-   running <command>initdb</command>.
-   It is common, but not required, to arrange for this role to be named
+   system always contains one predefined role. This role is always
+   a <quote>superuser</quote>, and by default (unless altered when running
+   <command>initdb</command>) it will have the same name as the
+   operating system user that initialized the database
+   cluster. Customarily, this role will be named
    <literal>postgres</literal>. In order to create more roles you
    first have to connect as this initial role.
   </para>
@@ -196,7 +191,7 @@ CREATE USER <replaceable>name</replaceable>;
      </varlistentry>
 
      <varlistentry>
-      <term id="role-creation">role creation<indexterm><primary>role</primary><secondary>privilege to create</secondary></indexterm></term>
+      <term id='role-creation'>role creation<indexterm><primary>role</primary><secondary>privilege to create</secondary></indexterm></term>
       <listitem>
        <para>
         A role must be explicitly given permission to create more roles
@@ -204,12 +199,7 @@ CREATE USER <replaceable>name</replaceable>;
         checks). To create such a role, use <literal>CREATE ROLE
         <replaceable>name</replaceable> CREATEROLE</literal>.
         A role with <literal>CREATEROLE</literal> privilege can alter and drop
-        roles which have been granted to the <literal>CREATEROLE</literal>
-        user with the <literal>ADMIN</literal> option. Such a grant occurs
-        automatically when a <literal>CREATEROLE</literal> user that is not
-        a superuser creates a new role, so that by default, a
-        <literal>CREATEROLE</literal> user can alter and drop the roles
-        which they have created.
+        other roles, too, as well as grant or revoke membership in them.
         Altering a role includes most changes that can be made using
         <literal>ALTER ROLE</literal>, including, for example, changing
         passwords.  It also includes modifications to a role that can
@@ -233,6 +223,15 @@ CREATE USER <replaceable>name</replaceable>;
         Finally, <literal>CREATEROLE</literal> does not
         confer the ability to grant or revoke the <literal>BYPASSRLS</literal>
         privilege.
+       </para>
+       <para>
+        Because the <literal>CREATEROLE</literal> privilege allows a user
+        to grant or revoke membership even in roles to which it does not (yet)
+        have any access, a <literal>CREATEROLE</literal> user can obtain access
+        to the capabilities of every predefined role in the system, including
+        highly privileged roles such as
+        <literal>pg_execute_server_program</literal> and
+        <literal>pg_write_server_files</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -271,12 +270,9 @@ CREATE USER <replaceable>name</replaceable>;
       <term>inheritance of privileges<indexterm><primary>role</primary><secondary>privilege to inherit</secondary></indexterm></term>
       <listitem>
        <para>
-        A role inherits the privileges of roles it is a member of, by default.
-        However, to create a role which does not inherit privileges by
-        default, use <literal>CREATE ROLE <replaceable>name</replaceable>
-        NOINHERIT</literal>.  Alternatively, inheritance can be overridden
-        for individual grants by using <literal>WITH INHERIT TRUE</literal>
-        or <literal>WITH INHERIT FALSE</literal>.
+        A role is given permission to inherit the privileges of roles it is a
+        member of, by default. However, to create a role without the permission,
+        use <literal>CREATE ROLE <replaceable>name</replaceable> NOINHERIT</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -330,34 +326,6 @@ ALTER ROLE myname SET enable_indexscan TO off;
    <literal>LOGIN</literal> privilege are fairly useless, since they will never
    be invoked.
   </para>
-
-  <para>
-   When a non-superuser creates a role using the <literal>CREATEROLE</literal>
-   privilege, the created role is automatically granted back to the creating
-   user, just as if the bootstrap superuser had executed the command
-   <literal>GRANT created_user TO creating_user WITH ADMIN TRUE, SET FALSE,
-   INHERIT FALSE</literal>. Since a <literal>CREATEROLE</literal> user can
-   only exercise special privileges with regard to an existing role if they
-   have <literal>ADMIN OPTION</literal> on it, this grant is just sufficient
-   to allow a <literal>CREATEROLE</literal> user to administer the roles they
-   created. However, because it is created with <literal>INHERIT FALSE, SET
-   FALSE</literal>, the <literal>CREATEROLE</literal> user doesn't inherit the
-   privileges of the created role, nor can it access the privileges of that
-   role using <literal>SET ROLE</literal>. However, since any user who has
-   <literal>ADMIN OPTION</literal> on a role can grant membership in that
-   role to any other user, the <literal>CREATEROLE</literal> user can gain
-   access to the created role by simplying granting that role back to
-   themselves with the <literal>INHERIT</literal> and/or <literal>SET</literal>
-   options. Thus, the fact that privileges are not inherited by default nor
-   is <literal>SET ROLE</literal> granted by default is a safeguard against
-   accidents, not a security feature. Also note that, because this automatic
-   grant is granted by the bootstrap user, it cannot be removed or changed by
-   the <literal>CREATEROLE</literal> user; however, any superuser could
-   revoke it, modify it, and/or issue additional such grants to other
-   <literal>CREATEROLE</literal> users. Whichever <literal>CREATEROLE</literal>
-   users have <literal>ADMIN OPTION</literal> on a role at any given time
-   can administer it.
-  </para>
  </sect1>
 
  <sect1 id="role-membership">
@@ -402,42 +370,36 @@ REVOKE <replaceable>group_role</replaceable> FROM <replaceable>role1</replaceabl
 
   <para>
    The members of a group role can use the privileges of the role in two
-   ways.  First, member roles that have been granted membership with the
-   <literal>SET</literal> option can do
+   ways.  First, every member of a group can explicitly do
    <link linkend="sql-set-role"><command>SET ROLE</command></link> to
    temporarily <quote>become</quote> the group role.  In this state, the
    database session has access to the privileges of the group role rather
    than the original login role, and any database objects created are
    considered owned by the group role not the login role.  Second, member
-   roles that have been granted membership with the
-   <literal>INHERIT</literal> option automatically have use
-   of the privileges of those roles, including any
+   roles that have the <literal>INHERIT</literal> attribute automatically have use
+   of the privileges of roles of which they are members, including any
    privileges inherited by those roles.
    As an example, suppose we have done:
 <programlisting>
-CREATE ROLE joe LOGIN;
-CREATE ROLE admin;
-CREATE ROLE wheel;
-CREATE ROLE island;
-GRANT admin TO joe WITH INHERIT TRUE;
-GRANT wheel TO admin WITH INHERIT FALSE;
-GRANT island TO joe WITH INHERIT TRUE, SET FALSE;
+CREATE ROLE joe LOGIN INHERIT;
+CREATE ROLE admin NOINHERIT;
+CREATE ROLE wheel NOINHERIT;
+GRANT admin TO joe;
+GRANT wheel TO admin;
 </programlisting>
    Immediately after connecting as role <literal>joe</literal>, a database
    session will have use of privileges granted directly to <literal>joe</literal>
-   plus any privileges granted to <literal>admin</literal> and
-   <literal>island</literal>, because <literal>joe</literal>
-   <quote>inherits</quote> those privileges.  However, privileges
+   plus any privileges granted to <literal>admin</literal>, because <literal>joe</literal>
+   <quote>inherits</quote> <literal>admin</literal>'s privileges.  However, privileges
    granted to <literal>wheel</literal> are not available, because even though
    <literal>joe</literal> is indirectly a member of <literal>wheel</literal>, the
-   membership is via <literal>admin</literal> which was granted using
-   <literal>WITH INHERIT FALSE</literal>. After:
+   membership is via <literal>admin</literal> which has the <literal>NOINHERIT</literal>
+   attribute.  After:
 <programlisting>
 SET ROLE admin;
 </programlisting>
    the session would have use of only those privileges granted to
-   <literal>admin</literal>, and not those granted to <literal>joe</literal> or
-   <literal>island</literal>.  After:
+   <literal>admin</literal>, and not those granted to <literal>joe</literal>.  After:
 <programlisting>
 SET ROLE wheel;
 </programlisting>
@@ -455,14 +417,9 @@ RESET ROLE;
   <note>
    <para>
     The <command>SET ROLE</command> command always allows selecting any role
-    that the original login role is directly or indirectly a member of,
-    provided that there is a chain of membership grants each of which has
-    <literal>SET TRUE</literal> (which is the default).
+    that the original login role is directly or indirectly a member of.
     Thus, in the above example, it is not necessary to become
     <literal>admin</literal> before becoming <literal>wheel</literal>.
-    On the other hand, it is not possible to become <literal>island</literal>
-    at all; <literal>joe</literal> can only access those privileges via
-    inheritance.
    </para>
   </note>
 
@@ -682,28 +639,6 @@ DROP ROLE doomed_role;
        <entry>Allow executing
        the <link linkend="sql-checkpoint"><command>CHECKPOINT</command></link>
        command.</entry>
-      </row>
-      <row>
-       <entry>pg_maintain</entry>
-       <entry>Allow executing
-       <link linkend="sql-vacuum"><command>VACUUM</command></link>,
-       <link linkend="sql-analyze"><command>ANALYZE</command></link>,
-       <link linkend="sql-cluster"><command>CLUSTER</command></link>,
-       <link linkend="sql-refreshmaterializedview"><command>REFRESH MATERIALIZED VIEW</command></link>,
-       <link linkend="sql-reindex"><command>REINDEX</command></link>,
-       and <link linkend="sql-lock"><command>LOCK TABLE</command></link> on all
-       relations.</entry>
-      </row>
-      <row>
-       <entry>pg_use_reserved_connections</entry>
-       <entry>Allow use of connection slots reserved via
-       <xref linkend="guc-reserved-connections"/>.</entry>
-      </row>
-      <row>
-       <entry>pg_create_subscription</entry>
-       <entry>Allow users with <literal>CREATE</literal> permission on the
-       database to issue
-       <link linkend="sql-createsubscription"><command>CREATE SUBSCRIPTION</command></link>.</entry>
       </row>
      </tbody>
     </tgroup>

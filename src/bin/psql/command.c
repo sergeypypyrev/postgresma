@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2022, PostgreSQL Global Development Group
  *
  * src/bin/psql/command.c
  */
@@ -63,7 +63,6 @@ static backslashResult exec_command(const char *cmd,
 									PQExpBuffer query_buf,
 									PQExpBuffer previous_buf);
 static backslashResult exec_command_a(PsqlScanState scan_state, bool active_branch);
-static backslashResult exec_command_bind(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_C(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_connect(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_cd(PsqlScanState scan_state, bool active_branch,
@@ -140,8 +139,7 @@ static backslashResult exec_command_write(PsqlScanState scan_state, bool active_
 static backslashResult exec_command_watch(PsqlScanState scan_state, bool active_branch,
 										  PQExpBuffer query_buf, PQExpBuffer previous_buf);
 static backslashResult exec_command_x(PsqlScanState scan_state, bool active_branch);
-static backslashResult exec_command_z(PsqlScanState scan_state, bool active_branch,
-									  const char *cmd);
+static backslashResult exec_command_z(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_shell_escape(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_slash_command_help(PsqlScanState scan_state, bool active_branch);
 static char *read_connect_arg(PsqlScanState scan_state);
@@ -309,8 +307,6 @@ exec_command(const char *cmd,
 
 	if (strcmp(cmd, "a") == 0)
 		status = exec_command_a(scan_state, active_branch);
-	else if (strcmp(cmd, "bind") == 0)
-		status = exec_command_bind(scan_state, active_branch);
 	else if (strcmp(cmd, "C") == 0)
 		status = exec_command_C(scan_state, active_branch);
 	else if (strcmp(cmd, "c") == 0 || strcmp(cmd, "connect") == 0)
@@ -414,8 +410,8 @@ exec_command(const char *cmd,
 									query_buf, previous_buf);
 	else if (strcmp(cmd, "x") == 0)
 		status = exec_command_x(scan_state, active_branch);
-	else if (strcmp(cmd, "z") == 0 || strcmp(cmd, "zS") == 0)
-		status = exec_command_z(scan_state, active_branch, cmd);
+	else if (strcmp(cmd, "z") == 0)
+		status = exec_command_z(scan_state, active_branch);
 	else if (strcmp(cmd, "!") == 0)
 		status = exec_command_shell_escape(scan_state, active_branch);
 	else if (strcmp(cmd, "?") == 0)
@@ -454,40 +450,6 @@ exec_command_a(PsqlScanState scan_state, bool active_branch)
 	}
 
 	return success ? PSQL_CMD_SKIP_LINE : PSQL_CMD_ERROR;
-}
-
-/*
- * \bind -- set query parameters
- */
-static backslashResult
-exec_command_bind(PsqlScanState scan_state, bool active_branch)
-{
-	backslashResult status = PSQL_CMD_SKIP_LINE;
-
-	if (active_branch)
-	{
-		char	   *opt;
-		int			nparams = 0;
-		int			nalloc = 0;
-
-		pset.bind_params = NULL;
-
-		while ((opt = psql_scan_slash_option(scan_state, OT_NORMAL, NULL, false)))
-		{
-			nparams++;
-			if (nparams > nalloc)
-			{
-				nalloc = nalloc ? nalloc * 2 : 1;
-				pset.bind_params = pg_realloc_array(pset.bind_params, char *, nalloc);
-			}
-			pset.bind_params[nparams - 1] = opt;
-		}
-
-		pset.bind_nparams = nparams;
-		pset.bind_flag = true;
-	}
-
-	return status;
 }
 
 /*
@@ -632,7 +594,8 @@ exec_command_cd(PsqlScanState scan_state, bool active_branch, const char *cmd)
 			success = false;
 		}
 
-		free(opt);
+		if (opt)
+			free(opt);
 	}
 	else
 		ignore_slash_options(scan_state);
@@ -805,7 +768,8 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 							break;
 					}
 
-					free(pattern2);
+					if (pattern2)
+						free(pattern2);
 				}
 				break;
 			case 'a':
@@ -876,7 +840,7 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 				success = listCollations(pattern, show_verbose, show_system);
 				break;
 			case 'p':
-				success = permissionsList(pattern, show_system);
+				success = permissionsList(pattern);
 				break;
 			case 'P':
 				{
@@ -916,7 +880,8 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 														  OT_NORMAL, NULL, true);
 					success = listDbRoleSettings(pattern, pattern2);
 
-					free(pattern2);
+					if (pattern2)
+						free(pattern2);
 				}
 				else
 					status = PSQL_CMD_UNKNOWN;
@@ -997,7 +962,8 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 				status = PSQL_CMD_UNKNOWN;
 		}
 
-		free(pattern);
+		if (pattern)
+			free(pattern);
 	}
 	else
 		ignore_slash_options(scan_state);
@@ -1125,8 +1091,10 @@ exec_command_edit(PsqlScanState scan_state, bool active_branch,
 				else
 					status = PSQL_CMD_ERROR;
 			}
-			free(fname);
-			free(ln);
+			if (fname)
+				free(fname);
+			if (ln)
+				free(ln);
 		}
 	}
 	else
@@ -1237,7 +1205,8 @@ exec_command_ef_ev(PsqlScanState scan_state, bool active_branch,
 				status = PSQL_CMD_NEWEDIT;
 		}
 
-		free(obj_desc);
+		if (obj_desc)
+			free(obj_desc);
 	}
 	else
 		ignore_slash_whole_line(scan_state);
@@ -1952,7 +1921,8 @@ exec_command_list(PsqlScanState scan_state, bool active_branch, const char *cmd)
 
 		success = listAllDbs(pattern, show_verbose);
 
-		free(pattern);
+		if (pattern)
+			free(pattern);
 	}
 	else
 		ignore_slash_options(scan_state);
@@ -2167,8 +2137,10 @@ exec_command_password(PsqlScanState scan_state, bool active_branch)
 		}
 
 		free(user);
-		free(pw1);
-		free(pw2);
+		if (pw1)
+			free(pw1);
+		if (pw2)
+			free(pw2);
 		termPQExpBuffer(&buf);
 	}
 	else
@@ -2243,8 +2215,10 @@ exec_command_prompt(PsqlScanState scan_state, bool active_branch,
 				(result && !SetVariable(pset.vars, opt, result)))
 				success = false;
 
-			free(result);
-			free(prompt_text);
+			if (result)
+				free(result);
+			if (prompt_text)
+				free(prompt_text);
 			free(opt);
 		}
 	}
@@ -2283,7 +2257,6 @@ exec_command_pset(PsqlScanState scan_state, bool active_branch)
 				"unicode_border_linestyle",
 				"unicode_column_linestyle",
 				"unicode_header_linestyle",
-				"xheader_width",
 				NULL
 			};
 
@@ -2543,7 +2516,8 @@ exec_command_sf_sv(PsqlScanState scan_state, bool active_branch,
 				ClosePager(output);
 		}
 
-		free(obj_desc);
+		if (obj_desc)
+			free(obj_desc);
 		destroyPQExpBuffer(buf);
 	}
 	else
@@ -2693,7 +2667,6 @@ exec_command_write(PsqlScanState scan_state, bool active_branch,
 				if (fname[0] == '|')
 				{
 					is_pipe = true;
-					fflush(NULL);
 					disable_sigpipe_trap();
 					fd = popen(&fname[1], "w");
 				}
@@ -2726,24 +2699,14 @@ exec_command_write(PsqlScanState scan_state, bool active_branch,
 				fprintf(fd, "%s\n", previous_buf->data);
 
 			if (is_pipe)
-			{
 				result = pclose(fd);
-
-				if (result != 0)
-				{
-					pg_log_error("%s: %s", fname, wait_result_to_str(result));
-					status = PSQL_CMD_ERROR;
-				}
-			}
 			else
-			{
 				result = fclose(fd);
 
-				if (result == EOF)
-				{
-					pg_log_error("%s: %m", fname);
-					status = PSQL_CMD_ERROR;
-				}
+			if (result == EOF)
+			{
+				pg_log_error("%s: %m", fname);
+				status = PSQL_CMD_ERROR;
 			}
 		}
 
@@ -2776,18 +2739,9 @@ exec_command_watch(PsqlScanState scan_state, bool active_branch,
 		/* Convert optional sleep-length argument */
 		if (opt)
 		{
-			char	   *opt_end;
-
-			errno = 0;
-			sleep = strtod(opt, &opt_end);
-			if (sleep < 0 || *opt_end || errno == ERANGE)
-			{
-				pg_log_error("\\watch: incorrect interval value '%s'", opt);
-				free(opt);
-				resetPQExpBuffer(query_buf);
-				psql_scan_reset(scan_state);
-				return PSQL_CMD_ERROR;
-			}
+			sleep = strtod(opt, NULL);
+			if (sleep <= 0)
+				sleep = 1;
 			free(opt);
 		}
 
@@ -2832,23 +2786,18 @@ exec_command_x(PsqlScanState scan_state, bool active_branch)
  * \z -- list table privileges (equivalent to \dp)
  */
 static backslashResult
-exec_command_z(PsqlScanState scan_state, bool active_branch, const char *cmd)
+exec_command_z(PsqlScanState scan_state, bool active_branch)
 {
 	bool		success = true;
 
 	if (active_branch)
 	{
-		char	   *pattern;
-		bool		show_system;
+		char	   *pattern = psql_scan_slash_option(scan_state,
+													 OT_NORMAL, NULL, true);
 
-		pattern = psql_scan_slash_option(scan_state,
-										 OT_NORMAL, NULL, true);
-
-		show_system = strchr(cmd, 'S') ? true : false;
-
-		success = permissionsList(pattern, show_system);
-
-		free(pattern);
+		success = permissionsList(pattern);
+		if (pattern)
+			free(pattern);
 	}
 	else
 		ignore_slash_options(scan_state);
@@ -2898,7 +2847,8 @@ exec_command_slash_command_help(PsqlScanState scan_state, bool active_branch)
 		else
 			slashUsage(pset.popt.topt.pager);
 
-		free(opt0);
+		if (opt0)
+			free(opt0);
 	}
 	else
 		ignore_slash_options(scan_state);
@@ -3038,7 +2988,8 @@ ignore_slash_filepipe(PsqlScanState scan_state)
 	char	   *arg = psql_scan_slash_option(scan_state,
 											 OT_FILEPIPE, NULL, false);
 
-	free(arg);
+	if (arg)
+		free(arg);
 }
 
 /*
@@ -3054,7 +3005,8 @@ ignore_slash_whole_line(PsqlScanState scan_state)
 	char	   *arg = psql_scan_slash_option(scan_state,
 											 OT_WHOLE_LINE, NULL, false);
 
-	free(arg);
+	if (arg)
+		free(arg);
 }
 
 /*
@@ -3534,8 +3486,10 @@ do_connect(enum trivalue reuse_previous_specification,
 	}							/* end retry loop */
 
 	/* Release locally allocated data, whether we succeeded or not */
-	pg_free(password);
-	PQconninfoFree(cinfo);
+	if (password)
+		pg_free(password);
+	if (cinfo)
+		PQconninfoFree(cinfo);
 
 	if (!success)
 	{
@@ -3609,27 +3563,27 @@ do_connect(enum trivalue reuse_previous_specification,
 			param_is_newly_set(PQhost(o_conn), PQhost(pset.db)) ||
 			param_is_newly_set(PQport(o_conn), PQport(pset.db)))
 		{
-			char	   *connhost = PQhost(pset.db);
+			char	   *host = PQhost(pset.db);
 			char	   *hostaddr = PQhostaddr(pset.db);
 
-			if (is_unixsock_path(connhost))
+			if (is_unixsock_path(host))
 			{
-				/* hostaddr overrides connhost */
+				/* hostaddr overrides host */
 				if (hostaddr && *hostaddr)
 					printf(_("You are now connected to database \"%s\" as user \"%s\" on address \"%s\" at port \"%s\".\n"),
 						   PQdb(pset.db), PQuser(pset.db), hostaddr, PQport(pset.db));
 				else
 					printf(_("You are now connected to database \"%s\" as user \"%s\" via socket in \"%s\" at port \"%s\".\n"),
-						   PQdb(pset.db), PQuser(pset.db), connhost, PQport(pset.db));
+						   PQdb(pset.db), PQuser(pset.db), host, PQport(pset.db));
 			}
 			else
 			{
-				if (hostaddr && *hostaddr && strcmp(connhost, hostaddr) != 0)
+				if (hostaddr && *hostaddr && strcmp(host, hostaddr) != 0)
 					printf(_("You are now connected to database \"%s\" as user \"%s\" on host \"%s\" (address \"%s\") at port \"%s\".\n"),
-						   PQdb(pset.db), PQuser(pset.db), connhost, hostaddr, PQport(pset.db));
+						   PQdb(pset.db), PQuser(pset.db), host, hostaddr, PQport(pset.db));
 				else
 					printf(_("You are now connected to database \"%s\" as user \"%s\" on host \"%s\" at port \"%s\".\n"),
-						   PQdb(pset.db), PQuser(pset.db), connhost, PQport(pset.db));
+						   PQdb(pset.db), PQuser(pset.db), host, PQport(pset.db));
 			}
 		}
 		else
@@ -3892,7 +3846,6 @@ editFile(const char *fname, int lineno)
 		sys = psprintf("\"%s\" \"%s\"",
 					   editorName, fname);
 #endif
-	fflush(NULL);
 	result = system(sys);
 	if (result == -1)
 		pg_log_error("could not start editor \"%s\"", editorName);
@@ -4429,29 +4382,6 @@ do_pset(const char *param, const char *value, printQueryOpt *popt, bool quiet)
 			popt->topt.expanded = !popt->topt.expanded;
 	}
 
-	/* header line width in expanded mode */
-	else if (strcmp(param, "xheader_width") == 0)
-	{
-		if (! value)
-			;
-		else if (pg_strcasecmp(value, "full") == 0)
-			popt->topt.expanded_header_width_type = PRINT_XHEADER_FULL;
-		else if (pg_strcasecmp(value, "column") == 0)
-			popt->topt.expanded_header_width_type = PRINT_XHEADER_COLUMN;
-		else if (pg_strcasecmp(value, "page") == 0)
-			popt->topt.expanded_header_width_type = PRINT_XHEADER_PAGE;
-		else
-		{
-			popt->topt.expanded_header_width_type = PRINT_XHEADER_EXACT_WIDTH;
-			popt->topt.expanded_header_exact_width = atoi(value);
-			if (popt->topt.expanded_header_exact_width == 0)
-			{
-				pg_log_error("\\pset: allowed xheader_width values are full (default), column, page, or a number specifying the exact width.");
-				return false;
-			}
-		}
-	}
-
 	/* field separator for CSV format */
 	else if (strcmp(param, "csv_fieldsep") == 0)
 	{
@@ -4642,19 +4572,6 @@ printPsetInfo(const char *param, printQueryOpt *popt)
 			printf(_("Expanded display is used automatically.\n"));
 		else
 			printf(_("Expanded display is off.\n"));
-	}
-
-	/* show xheader width value */
-	else if (strcmp(param, "xheader_width") == 0)
-	{
-		if (popt->topt.expanded_header_width_type == PRINT_XHEADER_FULL)
-			printf(_("Expanded header width is 'full'.\n"));
-		else if (popt->topt.expanded_header_width_type == PRINT_XHEADER_COLUMN)
-			printf(_("Expanded header width is 'column'.\n"));
-		else if (popt->topt.expanded_header_width_type == PRINT_XHEADER_PAGE)
-			printf(_("Expanded header width is 'page'.\n"));
-		else if (popt->topt.expanded_header_width_type == PRINT_XHEADER_EXACT_WIDTH)
-			printf(_("Expanded header width is %d.\n"), popt->topt.expanded_header_exact_width);
 	}
 
 	/* show field separator for CSV format */
@@ -4857,11 +4774,16 @@ restorePsetInfo(printQueryOpt *popt, printQueryOpt *save)
 	/* Free all the old data we're about to overwrite the pointers to. */
 
 	/* topt.line_style points to const data that need not be duplicated */
-	free(popt->topt.fieldSep.separator);
-	free(popt->topt.recordSep.separator);
-	free(popt->topt.tableAttr);
-	free(popt->nullPrint);
-	free(popt->title);
+	if (popt->topt.fieldSep.separator)
+		free(popt->topt.fieldSep.separator);
+	if (popt->topt.recordSep.separator)
+		free(popt->topt.recordSep.separator);
+	if (popt->topt.tableAttr)
+		free(popt->topt.tableAttr);
+	if (popt->nullPrint)
+		free(popt->nullPrint);
+	if (popt->title)
+		free(popt->title);
 
 	/*
 	 * footers and translate_columns are never set in psql's print settings,
@@ -4946,9 +4868,9 @@ pset_value_string(const char *param, printQueryOpt *popt)
 	else if (strcmp(param, "footer") == 0)
 		return pstrdup(pset_bool_string(popt->topt.default_footer));
 	else if (strcmp(param, "format") == 0)
-		return pstrdup(_align2string(popt->topt.format));
+		return psprintf("%s", _align2string(popt->topt.format));
 	else if (strcmp(param, "linestyle") == 0)
-		return pstrdup(get_line_style(&popt->topt)->name);
+		return psprintf("%s", get_line_style(&popt->topt)->name);
 	else if (strcmp(param, "null") == 0)
 		return pset_quoted_string(popt->nullPrint
 								  ? popt->nullPrint
@@ -4977,23 +4899,6 @@ pset_value_string(const char *param, printQueryOpt *popt)
 		return pstrdup(_unicode_linestyle2string(popt->topt.unicode_column_linestyle));
 	else if (strcmp(param, "unicode_header_linestyle") == 0)
 		return pstrdup(_unicode_linestyle2string(popt->topt.unicode_header_linestyle));
-	else if (strcmp(param, "xheader_width") == 0)
-	{
-		if (popt->topt.expanded_header_width_type == PRINT_XHEADER_FULL)
-			return(pstrdup("full"));
-		else if (popt->topt.expanded_header_width_type == PRINT_XHEADER_COLUMN)
-			return(pstrdup("column"));
-		else if (popt->topt.expanded_header_width_type == PRINT_XHEADER_PAGE)
-			return(pstrdup("page"));
-		else
-		{
-			/* must be PRINT_XHEADER_EXACT_WIDTH */
-			char wbuff[32];
-			snprintf(wbuff, sizeof(wbuff), "%d",
-					 popt->topt.expanded_header_exact_width);
-			return pstrdup(wbuff);
-		}
-	}
 	else
 		return pstrdup("ERROR");
 }
@@ -5015,7 +4920,6 @@ do_shell(const char *command)
 {
 	int			result;
 
-	fflush(NULL);
 	if (!command)
 	{
 		char	   *sys;
@@ -5040,21 +4944,6 @@ do_shell(const char *command)
 	}
 	else
 		result = system(command);
-
-	if (result == 0)
-	{
-		SetVariable(pset.vars, "SHELL_EXIT_CODE", "0");
-		SetVariable(pset.vars, "SHELL_ERROR", "false");
-	}
-	else
-	{
-		int			exit_code = wait_result_to_exit_code(result);
-		char		buf[32];
-
-		snprintf(buf, sizeof(buf), "%d", exit_code);
-		SetVariable(pset.vars, "SHELL_EXIT_CODE", buf);
-		SetVariable(pset.vars, "SHELL_ERROR", "true");
-	}
 
 	if (result == 127 || result == -1)
 	{
@@ -5082,7 +4971,7 @@ do_watch(PQExpBuffer query_buf, double sleep)
 	FILE	   *pagerpipe = NULL;
 	int			title_len;
 	int			res = 0;
-#ifndef WIN32
+#ifdef HAVE_POSIX_DECL_SIGWAIT
 	sigset_t	sigalrm_sigchld_sigint;
 	sigset_t	sigalrm_sigchld;
 	sigset_t	sigint;
@@ -5096,7 +4985,7 @@ do_watch(PQExpBuffer query_buf, double sleep)
 		return false;
 	}
 
-#ifndef WIN32
+#ifdef HAVE_POSIX_DECL_SIGWAIT
 	sigemptyset(&sigalrm_sigchld_sigint);
 	sigaddset(&sigalrm_sigchld_sigint, SIGCHLD);
 	sigaddset(&sigalrm_sigchld_sigint, SIGALRM);
@@ -5135,12 +5024,11 @@ do_watch(PQExpBuffer query_buf, double sleep)
 	 * PAGER environment variables, because traditional pagers probably won't
 	 * be very useful for showing a stream of results.
 	 */
-#ifndef WIN32
+#ifdef HAVE_POSIX_DECL_SIGWAIT
 	pagerprog = getenv("PSQL_WATCH_PAGER");
 #endif
 	if (pagerprog && myopt.topt.pager)
 	{
-		fflush(NULL);
 		disable_sigpipe_trap();
 		pagerpipe = popen(pagerprog, "w");
 
@@ -5207,10 +5095,7 @@ do_watch(PQExpBuffer query_buf, double sleep)
 		if (pagerpipe && ferror(pagerpipe))
 			break;
 
-		if (sleep == 0)
-			continue;
-
-#ifdef WIN32
+#ifndef HAVE_POSIX_DECL_SIGWAIT
 
 		/*
 		 * Set up cancellation of 'watch' via SIGINT.  We redo this each time
@@ -5291,7 +5176,7 @@ do_watch(PQExpBuffer query_buf, double sleep)
 		fflush(stdout);
 	}
 
-#ifndef WIN32
+#ifdef HAVE_POSIX_DECL_SIGWAIT
 	/* Disable the interval timer. */
 	memset(&interval, 0, sizeof(interval));
 	setitimer(ITIMER_REAL, &interval, NULL);

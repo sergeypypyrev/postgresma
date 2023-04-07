@@ -10,7 +10,6 @@
 #include "catalog/pg_collation.h"
 #include "ltree.h"
 #include "miscadmin.h"
-#include "utils/array.h"
 #include "utils/formatting.h"
 
 PG_FUNCTION_INFO_V1(ltq_regex);
@@ -25,16 +24,17 @@ static char *
 getlexeme(char *start, char *end, int *len)
 {
 	char	   *ptr;
+	int			charlen;
 
-	while (start < end && t_iseq(start, '_'))
-		start += pg_mblen(start);
+	while (start < end && (charlen = pg_mblen(start)) == 1 && t_iseq(start, '_'))
+		start += charlen;
 
 	ptr = start;
 	if (ptr >= end)
 		return NULL;
 
-	while (ptr < end && !t_iseq(ptr, '_'))
-		ptr += pg_mblen(ptr);
+	while (ptr < end && !((charlen = pg_mblen(ptr)) == 1 && t_iseq(ptr, '_')))
+		ptr += charlen;
 
 	*len = ptr - start;
 	return start;

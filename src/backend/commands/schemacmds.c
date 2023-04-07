@@ -3,7 +3,7 @@
  * schemacmds.c
  *	  schema creation/manipulation commands
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -23,7 +23,6 @@
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_authid.h"
-#include "catalog/pg_database.h"
 #include "catalog/pg_namespace.h"
 #include "commands/dbcommands.h"
 #include "commands/event_trigger.h"
@@ -92,12 +91,12 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	 * The latter provision guards against "giveaway" attacks.  Note that a
 	 * superuser will always have both of these privileges a fortiori.
 	 */
-	aclresult = object_aclcheck(DatabaseRelationId, MyDatabaseId, saved_uid, ACL_CREATE);
+	aclresult = pg_database_aclcheck(MyDatabaseId, saved_uid, ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_DATABASE,
 					   get_database_name(MyDatabaseId));
 
-	check_can_set_role(saved_uid, owner_uid);
+	check_is_member_of_role(saved_uid, owner_uid);
 
 	/* Additional check to protect reserved schema names */
 	if (!allowSystemTableMods && IsReservedName(schemaName))
@@ -255,12 +254,12 @@ RenameSchema(const char *oldname, const char *newname)
 				 errmsg("schema \"%s\" already exists", newname)));
 
 	/* must be owner */
-	if (!object_ownercheck(NamespaceRelationId, nspOid, GetUserId()))
+	if (!pg_namespace_ownercheck(nspOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SCHEMA,
 					   oldname);
 
 	/* must have CREATE privilege on database */
-	aclresult = object_aclcheck(DatabaseRelationId, MyDatabaseId, GetUserId(), ACL_CREATE);
+	aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_DATABASE,
 					   get_database_name(MyDatabaseId));
@@ -286,16 +285,16 @@ RenameSchema(const char *oldname, const char *newname)
 }
 
 void
-AlterSchemaOwner_oid(Oid schemaoid, Oid newOwnerId)
+AlterSchemaOwner_oid(Oid oid, Oid newOwnerId)
 {
 	HeapTuple	tup;
 	Relation	rel;
 
 	rel = table_open(NamespaceRelationId, RowExclusiveLock);
 
-	tup = SearchSysCache1(NAMESPACEOID, ObjectIdGetDatum(schemaoid));
+	tup = SearchSysCache1(NAMESPACEOID, ObjectIdGetDatum(oid));
 	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "cache lookup failed for schema %u", schemaoid);
+		elog(ERROR, "cache lookup failed for schema %u", oid);
 
 	AlterSchemaOwner_internal(tup, rel, newOwnerId);
 
@@ -365,12 +364,12 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 		AclResult	aclresult;
 
 		/* Otherwise, must be owner of the existing object */
-		if (!object_ownercheck(NamespaceRelationId, nspForm->oid, GetUserId()))
+		if (!pg_namespace_ownercheck(nspForm->oid, GetUserId()))
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SCHEMA,
 						   NameStr(nspForm->nspname));
 
 		/* Must be able to become new owner */
-		check_can_set_role(GetUserId(), newOwnerId);
+		check_is_member_of_role(GetUserId(), newOwnerId);
 
 		/*
 		 * must have create-schema rights
@@ -381,7 +380,7 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 		 * schemas.  Because superusers will always have this right, we need
 		 * no special case for them.
 		 */
-		aclresult = object_aclcheck(DatabaseRelationId, MyDatabaseId, GetUserId(),
+		aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(),
 										 ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_DATABASE,

@@ -32,7 +32,7 @@
  * input group.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -597,8 +597,6 @@ ExecEndSetOp(SetOpState *node)
 void
 ExecReScanSetOp(SetOpState *node)
 {
-	PlanState  *outerPlan = outerPlanState(node);
-
 	ExecClearTuple(node->ps.ps_ResultTupleSlot);
 	node->setop_done = false;
 	node->numOutput = 0;
@@ -619,7 +617,7 @@ ExecReScanSetOp(SetOpState *node)
 		 * parameter changes, then we can just rescan the existing hash table;
 		 * no need to build it again.
 		 */
-		if (outerPlan->chgParam == NULL)
+		if (node->ps.lefttree->chgParam == NULL)
 		{
 			ResetTupleHashIterator(node->hashtable, &node->hashiter);
 			return;
@@ -648,6 +646,6 @@ ExecReScanSetOp(SetOpState *node)
 	 * if chgParam of subnode is not null then plan will be re-scanned by
 	 * first ExecProcNode.
 	 */
-	if (outerPlan->chgParam == NULL)
-		ExecReScan(outerPlan);
+	if (node->ps.lefttree->chgParam == NULL)
+		ExecReScan(node->ps.lefttree);
 }

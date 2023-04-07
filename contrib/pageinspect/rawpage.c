@@ -5,7 +5,7 @@
  *
  * Access-method specific inspection functions are in separate files.
  *
- * Copyright (c) 2007-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/pageinspect/rawpage.c
@@ -254,8 +254,7 @@ page_header(PG_FUNCTION_ARGS)
 	Datum		values[9];
 	bool		nulls[9];
 
-	Page		page;
-	PageHeader	pageheader;
+	PageHeader	page;
 	XLogRecPtr	lsn;
 
 	if (!superuser())
@@ -263,8 +262,7 @@ page_header(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser to use raw page functions")));
 
-	page = get_page_from_raw(raw_page);
-	pageheader = (PageHeader) page;
+	page = (PageHeader) get_page_from_raw(raw_page);
 
 	/* Build a tuple descriptor for our result type */
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
@@ -284,8 +282,8 @@ page_header(PG_FUNCTION_ARGS)
 	}
 	else
 		values[0] = LSNGetDatum(lsn);
-	values[1] = UInt16GetDatum(pageheader->pd_checksum);
-	values[2] = UInt16GetDatum(pageheader->pd_flags);
+	values[1] = UInt16GetDatum(page->pd_checksum);
+	values[2] = UInt16GetDatum(page->pd_flags);
 
 	/* pageinspect >= 1.10 uses int4 instead of int2 for those fields */
 	switch (TupleDescAttr(tupdesc, 3)->atttypid)
@@ -294,18 +292,18 @@ page_header(PG_FUNCTION_ARGS)
 			Assert(TupleDescAttr(tupdesc, 4)->atttypid == INT2OID &&
 				   TupleDescAttr(tupdesc, 5)->atttypid == INT2OID &&
 				   TupleDescAttr(tupdesc, 6)->atttypid == INT2OID);
-			values[3] = UInt16GetDatum(pageheader->pd_lower);
-			values[4] = UInt16GetDatum(pageheader->pd_upper);
-			values[5] = UInt16GetDatum(pageheader->pd_special);
+			values[3] = UInt16GetDatum(page->pd_lower);
+			values[4] = UInt16GetDatum(page->pd_upper);
+			values[5] = UInt16GetDatum(page->pd_special);
 			values[6] = UInt16GetDatum(PageGetPageSize(page));
 			break;
 		case INT4OID:
 			Assert(TupleDescAttr(tupdesc, 4)->atttypid == INT4OID &&
 				   TupleDescAttr(tupdesc, 5)->atttypid == INT4OID &&
 				   TupleDescAttr(tupdesc, 6)->atttypid == INT4OID);
-			values[3] = Int32GetDatum(pageheader->pd_lower);
-			values[4] = Int32GetDatum(pageheader->pd_upper);
-			values[5] = Int32GetDatum(pageheader->pd_special);
+			values[3] = Int32GetDatum(page->pd_lower);
+			values[4] = Int32GetDatum(page->pd_upper);
+			values[5] = Int32GetDatum(page->pd_special);
 			values[6] = Int32GetDatum(PageGetPageSize(page));
 			break;
 		default:
@@ -314,7 +312,7 @@ page_header(PG_FUNCTION_ARGS)
 	}
 
 	values[7] = UInt16GetDatum(PageGetPageLayoutVersion(page));
-	values[8] = TransactionIdGetDatum(pageheader->pd_prune_xid);
+	values[8] = TransactionIdGetDatum(page->pd_prune_xid);
 
 	/* Build and return the tuple. */
 

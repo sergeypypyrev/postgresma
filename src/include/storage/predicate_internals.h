@@ -4,7 +4,7 @@
  *	  POSTGRES internal predicate locking definitions.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/predicate_internals.h
@@ -14,7 +14,6 @@
 #ifndef PREDICATE_INTERNALS_H
 #define PREDICATE_INTERNALS_H
 
-#include "lib/ilist.h"
 #include "storage/lock.h"
 #include "storage/lwlock.h"
 
@@ -85,14 +84,13 @@ typedef struct SERIALIZABLEXACT
 		SerCommitSeqNo lastCommitBeforeSnapshot;	/* when not committed or
 													 * no conflict out */
 	}			SeqNo;
-	dlist_head	outConflicts;	/* list of write transactions whose data we
+	SHM_QUEUE	outConflicts;	/* list of write transactions whose data we
 								 * couldn't read. */
-	dlist_head	inConflicts;	/* list of read transactions which couldn't
+	SHM_QUEUE	inConflicts;	/* list of read transactions which couldn't
 								 * see our write. */
-	dlist_head	predicateLocks; /* list of associated PREDICATELOCK objects */
-	dlist_node	finishedLink;	/* list link in
+	SHM_QUEUE	predicateLocks; /* list of associated PREDICATELOCK objects */
+	SHM_QUEUE	finishedLink;	/* list link in
 								 * FinishedSerializableTransactions */
-	dlist_node	xactLink;		/* PredXact->activeList/availableList */
 
 	/*
 	 * perXactPredicateListLock is only used in parallel queries: it protects
@@ -105,7 +103,7 @@ typedef struct SERIALIZABLEXACT
 	 * for r/o transactions: list of concurrent r/w transactions that we could
 	 * potentially have conflicts with, and vice versa for r/w transactions
 	 */
-	dlist_head	possibleUnsafeConflicts;
+	SHM_QUEUE	possibleUnsafeConflicts;
 
 	TransactionId topXid;		/* top level xid for the transaction, if one
 								 * exists; else invalid */
@@ -141,10 +139,28 @@ typedef struct SERIALIZABLEXACT
  */
 #define SXACT_FLAG_PARTIALLY_RELEASED	0x00000800
 
+/*
+ * The following types are used to provide an ad hoc list for holding
+ * SERIALIZABLEXACT objects.  An HTAB is overkill, since there is no need to
+ * access these by key -- there are direct pointers to these objects where
+ * needed.  If a shared memory list is created, these types can probably be
+ * eliminated in favor of using the general solution.
+ */
+typedef struct PredXactListElementData
+{
+	SHM_QUEUE	link;
+	SERIALIZABLEXACT sxact;
+}			PredXactListElementData;
+
+typedef struct PredXactListElementData *PredXactListElement;
+
+#define PredXactListElementDataSize \
+		((Size)MAXALIGN(sizeof(PredXactListElementData)))
+
 typedef struct PredXactListData
 {
-	dlist_head	availableList;
-	dlist_head	activeList;
+	SHM_QUEUE	availableList;
+	SHM_QUEUE	activeList;
 
 	/*
 	 * These global variables are maintained when registering and cleaning up
@@ -171,7 +187,7 @@ typedef struct PredXactListData
 												 * seq no */
 	SERIALIZABLEXACT *OldCommittedSxact;	/* shared copy of dummy sxact */
 
-	SERIALIZABLEXACT *element;
+	PredXactListElement element;
 }			PredXactListData;
 
 typedef struct PredXactListData *PredXactList;
@@ -192,8 +208,8 @@ typedef struct PredXactListData *PredXactList;
  */
 typedef struct RWConflictData
 {
-	dlist_node	outLink;		/* link for list of conflicts out from a sxact */
-	dlist_node	inLink;			/* link for list of conflicts in to a sxact */
+	SHM_QUEUE	outLink;		/* link for list of conflicts out from a sxact */
+	SHM_QUEUE	inLink;			/* link for list of conflicts in to a sxact */
 	SERIALIZABLEXACT *sxactOut;
 	SERIALIZABLEXACT *sxactIn;
 }			RWConflictData;
@@ -205,7 +221,7 @@ typedef struct RWConflictData *RWConflict;
 
 typedef struct RWConflictPoolHeaderData
 {
-	dlist_head	availableList;
+	SHM_QUEUE	availableList;
 	RWConflict	element;
 }			RWConflictPoolHeaderData;
 
@@ -287,7 +303,7 @@ typedef struct PREDICATELOCKTARGET
 	PREDICATELOCKTARGETTAG tag; /* unique identifier of lockable object */
 
 	/* data */
-	dlist_head	predicateLocks; /* list of PREDICATELOCK objects assoc. with
+	SHM_QUEUE	predicateLocks; /* list of PREDICATELOCK objects assoc. with
 								 * predicate lock target */
 } PREDICATELOCKTARGET;
 
@@ -320,9 +336,9 @@ typedef struct PREDICATELOCK
 	PREDICATELOCKTAG tag;		/* unique identifier of lock */
 
 	/* data */
-	dlist_node	targetLink;		/* list link in PREDICATELOCKTARGET's list of
+	SHM_QUEUE	targetLink;		/* list link in PREDICATELOCKTARGET's list of
 								 * predicate locks */
-	dlist_node	xactLink;		/* list link in SERIALIZABLEXACT's list of
+	SHM_QUEUE	xactLink;		/* list link in SERIALIZABLEXACT's list of
 								 * predicate locks */
 	SerCommitSeqNo commitSeqNo; /* only used for summarized predicate locks */
 } PREDICATELOCK;

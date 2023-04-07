@@ -3,7 +3,7 @@
  * tid.c
  *	  Functions for the built-in type tuple id
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -37,6 +37,11 @@
 #include "utils/varlena.h"
 
 
+#define DatumGetItemPointer(X)	 ((ItemPointer) DatumGetPointer(X))
+#define ItemPointerGetDatum(X)	 PointerGetDatum(X)
+#define PG_GETARG_ITEMPOINTER(n) DatumGetItemPointer(PG_GETARG_DATUM(n))
+#define PG_RETURN_ITEMPOINTER(x) return ItemPointerGetDatum(x)
+
 #define LDELIM			'('
 #define RDELIM			')'
 #define DELIM			','
@@ -52,7 +57,6 @@ Datum
 tidin(PG_FUNCTION_ARGS)
 {
 	char	   *str = PG_GETARG_CSTRING(0);
-	Node	   *escontext = fcinfo->context;
 	char	   *p,
 			   *coord[NTIDARGS];
 	int			i;
@@ -67,7 +71,7 @@ tidin(PG_FUNCTION_ARGS)
 			coord[i++] = p + 1;
 
 	if (i < NTIDARGS)
-		ereturn(escontext, (Datum) 0,
+		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid input syntax for type %s: \"%s\"",
 						"tid", str)));
@@ -75,7 +79,7 @@ tidin(PG_FUNCTION_ARGS)
 	errno = 0;
 	cvt = strtoul(coord[0], &badp, 10);
 	if (errno || *badp != DELIM)
-		ereturn(escontext, (Datum) 0,
+		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid input syntax for type %s: \"%s\"",
 						"tid", str)));
@@ -89,7 +93,7 @@ tidin(PG_FUNCTION_ARGS)
 #if SIZEOF_LONG > 4
 	if (cvt != (unsigned long) blockNumber &&
 		cvt != (unsigned long) ((int32) blockNumber))
-		ereturn(escontext, (Datum) 0,
+		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid input syntax for type %s: \"%s\"",
 						"tid", str)));
@@ -98,7 +102,7 @@ tidin(PG_FUNCTION_ARGS)
 	cvt = strtoul(coord[1], &badp, 10);
 	if (errno || *badp != RDELIM ||
 		cvt > USHRT_MAX)
-		ereturn(escontext, (Datum) 0,
+		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid input syntax for type %s: \"%s\"",
 						"tid", str)));

@@ -59,7 +59,7 @@
  * counter does not fall within the wraparound horizon considering the global
  * minimum value.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/multixact.c
@@ -261,24 +261,22 @@ typedef struct MultiXactStateData
 	 * we compute it (using nextMXact if none are valid).  Each backend is
 	 * required not to attempt to access any SLRU data for MultiXactIds older
 	 * than its own OldestVisibleMXactId[] setting; this is necessary because
-	 * the relevant SLRU data can be concurrently truncated away.
+	 * the checkpointer could truncate away such data at any instant.
 	 *
 	 * The oldest valid value among all of the OldestMemberMXactId[] and
 	 * OldestVisibleMXactId[] entries is considered by vacuum as the earliest
-	 * possible value still having any live member transaction -- OldestMxact.
-	 * Any value older than that is typically removed from tuple headers, or
-	 * "frozen" via being replaced with a new xmax.  VACUUM can sometimes even
-	 * remove an individual MultiXact xmax whose value is >= its OldestMxact
-	 * cutoff, though typically only when no individual member XID is still
-	 * running.  See FreezeMultiXactId for full details.
-	 *
-	 * Whenever VACUUM advances relminmxid, then either its OldestMxact cutoff
-	 * or the oldest extant Multi remaining in the table is used as the new
-	 * pg_class.relminmxid value (whichever is earlier).  The minimum of all
-	 * relminmxid values in each database is stored in pg_database.datminmxid.
-	 * In turn, the minimum of all of those values is stored in pg_control.
-	 * This is used as the truncation point for pg_multixact when unneeded
-	 * segments get removed by vac_truncate_clog() during vacuuming.
+	 * possible value still having any live member transaction.  Subtracting
+	 * vacuum_multixact_freeze_min_age from that value we obtain the freezing
+	 * point for multixacts for that table.  Any value older than that is
+	 * removed from tuple headers (or "frozen"; see FreezeMultiXactId.  Note
+	 * that multis that have member xids that are older than the cutoff point
+	 * for xids must also be frozen, even if the multis themselves are newer
+	 * than the multixid cutoff point).  Whenever a full table vacuum happens,
+	 * the freezing point so computed is used as the new pg_class.relminmxid
+	 * value.  The minimum of all those values in a database is stored as
+	 * pg_database.datminmxid.  In turn, the minimum of all of those values is
+	 * stored in pg_control and used as truncation point for pg_multixact.  At
+	 * checkpoint or restartpoint, unneeded segments are removed.
 	 */
 	MultiXactId perBackendXactIds[FLEXIBLE_ARRAY_MEMBER];
 } MultiXactStateData;
@@ -321,7 +319,8 @@ typedef struct mXactCacheEnt
 } mXactCacheEnt;
 
 #define MAX_CACHE_ENTRIES	256
-static dclist_head MXactCache = DCLIST_STATIC_INIT(MXactCache);
+static dlist_head MXactCache = DLIST_STATIC_INIT(MXactCache);
+static int	MXactCacheMembers = 0;
 static MemoryContext MXactContext = NULL;
 
 #ifdef MULTIXACT_DEBUG
@@ -390,8 +389,8 @@ MultiXactIdCreate(TransactionId xid1, MultiXactStatus status1,
 	MultiXactId newMulti;
 	MultiXactMember members[2];
 
-	Assert(TransactionIdIsValid(xid1));
-	Assert(TransactionIdIsValid(xid2));
+	AssertArg(TransactionIdIsValid(xid1));
+	AssertArg(TransactionIdIsValid(xid2));
 
 	Assert(!TransactionIdEquals(xid1, xid2) || (status1 != status2));
 
@@ -446,8 +445,8 @@ MultiXactIdExpand(MultiXactId multi, TransactionId xid, MultiXactStatus status)
 	int			i;
 	int			j;
 
-	Assert(MultiXactIdIsValid(multi));
-	Assert(TransactionIdIsValid(xid));
+	AssertArg(MultiXactIdIsValid(multi));
+	AssertArg(TransactionIdIsValid(xid));
 
 	/* MultiXactIdSetOldestMember() must have been called already. */
 	Assert(MultiXactIdIsValid(OldestMemberMXactId[MyBackendId]));
@@ -669,8 +668,8 @@ MultiXactIdSetOldestMember(void)
  *
  * We set the OldestVisibleMXactId for a given transaction the first time
  * it's going to inspect any MultiXactId.  Once we have set this, we are
- * guaranteed that SLRU data for MultiXactIds >= our own OldestVisibleMXactId
- * won't be truncated away.
+ * guaranteed that the checkpointer won't truncate off SLRU data for
+ * MultiXactIds at or after our OldestVisibleMXactId.
  *
  * The value to set is the oldest of nextMXact and all the valid per-backend
  * OldestMemberMXactId[] entries.  Because of the locking we do, we can be
@@ -1216,14 +1215,14 @@ GetNewMultiXactId(int nmembers, MultiXactOffset *offset)
  * range, that is, greater to or equal than oldestMultiXactId, and less than
  * nextMXact.  Otherwise, an error is raised.
  *
- * isLockOnly must be set to true if caller is certain that the given multi
+ * onlyLock must be set to true if caller is certain that the given multi
  * is used only to lock tuples; can be false without loss of correctness,
  * but passing a true means we can return quickly without checking for
  * old updates.
  */
 int
 GetMultiXactIdMembers(MultiXactId multi, MultiXactMember **members,
-					  bool from_pgupgrade, bool isLockOnly)
+					  bool from_pgupgrade, bool onlyLock)
 {
 	int			pageno;
 	int			prev_pageno;
@@ -1265,7 +1264,7 @@ GetMultiXactIdMembers(MultiXactId multi, MultiXactMember **members,
 	 * we can skip checking if the value is older than our oldest visible
 	 * multi.  It cannot possibly still be running.
 	 */
-	if (isLockOnly &&
+	if (onlyLock &&
 		MultiXactIdPrecedes(multi, OldestVisibleMXactId[MyBackendId]))
 	{
 		debug_elog2(DEBUG2, "GetMembers: a locker-only multi is too old");
@@ -1506,10 +1505,9 @@ mXactCacheGetBySet(int nmembers, MultiXactMember *members)
 	/* sort the array so comparison is easy */
 	qsort(members, nmembers, sizeof(MultiXactMember), mxactMemberComparator);
 
-	dclist_foreach(iter, &MXactCache)
+	dlist_foreach(iter, &MXactCache)
 	{
-		mXactCacheEnt *entry = dclist_container(mXactCacheEnt, node,
-												iter.cur);
+		mXactCacheEnt *entry = dlist_container(mXactCacheEnt, node, iter.cur);
 
 		if (entry->nmembers != nmembers)
 			continue;
@@ -1521,7 +1519,7 @@ mXactCacheGetBySet(int nmembers, MultiXactMember *members)
 		if (memcmp(members, entry->members, nmembers * sizeof(MultiXactMember)) == 0)
 		{
 			debug_elog3(DEBUG2, "CacheGet: found %u", entry->multi);
-			dclist_move_head(&MXactCache, iter.cur);
+			dlist_move_head(&MXactCache, iter.cur);
 			return entry->multi;
 		}
 	}
@@ -1545,10 +1543,9 @@ mXactCacheGetById(MultiXactId multi, MultiXactMember **members)
 
 	debug_elog3(DEBUG2, "CacheGet: looking for %u", multi);
 
-	dclist_foreach(iter, &MXactCache)
+	dlist_foreach(iter, &MXactCache)
 	{
-		mXactCacheEnt *entry = dclist_container(mXactCacheEnt, node,
-												iter.cur);
+		mXactCacheEnt *entry = dlist_container(mXactCacheEnt, node, iter.cur);
 
 		if (entry->multi == multi)
 		{
@@ -1570,7 +1567,7 @@ mXactCacheGetById(MultiXactId multi, MultiXactMember **members)
 			 * This is acceptable only because we exit the iteration
 			 * immediately afterwards.
 			 */
-			dclist_move_head(&MXactCache, iter.cur);
+			dlist_move_head(&MXactCache, iter.cur);
 
 			*members = ptr;
 			return entry->nmembers;
@@ -1614,15 +1611,17 @@ mXactCachePut(MultiXactId multi, int nmembers, MultiXactMember *members)
 	/* mXactCacheGetBySet assumes the entries are sorted, so sort them */
 	qsort(entry->members, nmembers, sizeof(MultiXactMember), mxactMemberComparator);
 
-	dclist_push_head(&MXactCache, &entry->node);
-	if (dclist_count(&MXactCache) > MAX_CACHE_ENTRIES)
+	dlist_push_head(&MXactCache, &entry->node);
+	if (MXactCacheMembers++ >= MAX_CACHE_ENTRIES)
 	{
 		dlist_node *node;
+		mXactCacheEnt *entry;
 
-		node = dclist_tail_node(&MXactCache);
-		dclist_delete_from(&MXactCache, node);
+		node = dlist_tail_node(&MXactCache);
+		dlist_delete(node);
+		MXactCacheMembers--;
 
-		entry = dclist_container(mXactCacheEnt, node, node);
+		entry = dlist_container(mXactCacheEnt, node, node);
 		debug_elog3(DEBUG2, "CachePut: pruning cached multi %u",
 					entry->multi);
 
@@ -1702,7 +1701,8 @@ AtEOXact_MultiXact(void)
 	 * a child of TopTransactionContext, we needn't delete it explicitly.
 	 */
 	MXactContext = NULL;
-	dclist_init(&MXactCache);
+	dlist_init(&MXactCache);
+	MXactCacheMembers = 0;
 }
 
 /*
@@ -1768,7 +1768,8 @@ PostPrepare_MultiXact(TransactionId xid)
 	 * Discard the local MultiXactId cache like in AtEOXact_MultiXact.
 	 */
 	MXactContext = NULL;
-	dclist_init(&MXactCache);
+	dlist_init(&MXactCache);
+	MXactCacheMembers = 0;
 }
 
 /*
@@ -2499,9 +2500,8 @@ ExtendMultiXactMember(MultiXactOffset offset, int nmembers)
  * longer have any running member transaction.
  *
  * It's not safe to truncate MultiXact SLRU segments on the value returned by
- * this function; however, it can be set as the new relminmxid for any table
- * that VACUUM knows has no remaining MXIDs < the same value.  It is only safe
- * to truncate SLRUs when no table can possibly still have a referencing MXID.
+ * this function; however, it can be used by a full-table vacuum to set the
+ * point at which it will be possible to truncate SLRU for that table.
  */
 MultiXactId
 GetOldestMultiXactId(void)
@@ -2802,8 +2802,9 @@ ReadMultiXactCounts(uint32 *multixacts, MultiXactOffset *members)
  * this will also be sufficient to keep us from using too many offsets.
  * However, if the average multixact has many members, we might exhaust the
  * members space while still using few enough members that these limits fail
- * to trigger relminmxid advancement by VACUUM.  At that point, we'd have no
- * choice but to start failing multixact-creating operations with an error.
+ * to trigger full table scans for relminmxid advancement.  At that point,
+ * we'd have no choice but to start failing multixact-creating operations
+ * with an error.
  *
  * To prevent that, if more than a threshold portion of the members space is
  * used, we effectively reduce autovacuum_multixact_freeze_max_age and
@@ -2815,11 +2816,14 @@ ReadMultiXactCounts(uint32 *multixacts, MultiXactOffset *members)
  * As the fraction of the member space currently in use grows, we become
  * more aggressive in clamping this value.  That not only causes autovacuum
  * to ramp up, but also makes any manual vacuums the user issues more
- * aggressive.  This happens because vacuum_get_cutoffs() will clamp the
- * freeze table and the minimum freeze age cutoffs based on the effective
+ * aggressive.  This happens because vacuum_set_xid_limits() clamps the
+ * freeze table and the minimum freeze age based on the effective
  * autovacuum_multixact_freeze_max_age this function returns.  In the worst
  * case, we'll claim the freeze_max_age to zero, and every vacuum of any
- * table will freeze every multixact.
+ * table will try to freeze every multixact.
+ *
+ * It's possible that these thresholds should be user-tunable, but for now
+ * we keep it simple.
  */
 int
 MultiXactMemberFreezeThreshold(void)
@@ -3372,9 +3376,12 @@ pg_get_multixact_members(PG_FUNCTION_ARGS)
 												false);
 		multi->iter = 0;
 
-		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-			elog(ERROR, "return type must be a row type");
-		funccxt->tuple_desc = tupdesc;
+		tupdesc = CreateTemplateTupleDesc(2);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "xid",
+						   XIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "mode",
+						   TEXTOID, -1, 0);
+
 		funccxt->attinmeta = TupleDescGetAttInMetadata(tupdesc);
 		funccxt->user_fctx = multi;
 

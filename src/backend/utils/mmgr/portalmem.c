@@ -8,7 +8,7 @@
  * doesn't actually run the executor for them.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -177,7 +177,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 {
 	Portal		portal;
 
-	Assert(PointerIsValid(name));
+	AssertArg(PointerIsValid(name));
 
 	portal = GetPortalByName(name);
 	if (PortalIsValid(portal))
@@ -287,11 +287,11 @@ PortalDefineQuery(Portal portal,
 				  List *stmts,
 				  CachedPlan *cplan)
 {
-	Assert(PortalIsValid(portal));
-	Assert(portal->status == PORTAL_NEW);
+	AssertArg(PortalIsValid(portal));
+	AssertState(portal->status == PORTAL_NEW);
 
-	Assert(sourceText != NULL);
-	Assert(commandTag != CMDTAG_UNKNOWN || stmts == NIL);
+	AssertArg(sourceText != NULL);
+	AssertArg(commandTag != CMDTAG_UNKNOWN || stmts == NIL);
 
 	portal->prepStmtName = prepStmtName;
 	portal->sourceText = sourceText;
@@ -468,7 +468,7 @@ MarkPortalFailed(Portal portal)
 void
 PortalDrop(Portal portal, bool isTopCommit)
 {
-	Assert(PortalIsValid(portal));
+	AssertArg(PortalIsValid(portal));
 
 	/*
 	 * Don't allow dropping a pinned portal, it's still needed by whoever
@@ -1146,11 +1146,13 @@ pg_cursor(PG_FUNCTION_ARGS)
 	{
 		Portal		portal = hentry->portal;
 		Datum		values[6];
-		bool		nulls[6] = {0};
+		bool		nulls[6];
 
 		/* report only "visible" entries */
 		if (!portal->visible)
 			continue;
+
+		MemSet(nulls, 0, sizeof(nulls));
 
 		values[0] = CStringGetTextDatum(portal->name);
 		values[1] = CStringGetTextDatum(portal->sourceText);

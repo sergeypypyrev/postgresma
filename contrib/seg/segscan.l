@@ -1,20 +1,8 @@
-%top{
+%{
 /*
  * A scanner for EMP-style numeric ranges
  */
-#include "postgres.h"
 
-#include "nodes/miscnodes.h"
-
-/*
- * NB: include segparse.h only AFTER including segdata.h, because segdata.h
- * contains the definition for SEG.
- */
-#include "segdata.h"
-#include "segparse.h"
-}
-
-%{
 /* LCOV_EXCL_START */
 
 /* No reason to constrain amount of data slurped */
@@ -33,6 +21,7 @@ fprintf_to_ereport(const char *fmt, const char *msg)
 /* Handles to the buffer that the lexer uses internally */
 static YY_BUFFER_STATE scanbufhandle;
 static char *scanbuf;
+static int	scanbuflen;
 %}
 
 %option 8bit
@@ -53,12 +42,12 @@ float        ({integer}|{real})([eE]{integer})?
 
 %%
 
-{range}      seg_yylval.text = yytext; return RANGE;
-{plumin}     seg_yylval.text = yytext; return PLUMIN;
-{float}      seg_yylval.text = yytext; return SEGFLOAT;
-\<           seg_yylval.text = "<"; return EXTENSION;
-\>           seg_yylval.text = ">"; return EXTENSION;
-\~           seg_yylval.text = "~"; return EXTENSION;
+{range}      yylval.text = yytext; return RANGE;
+{plumin}     yylval.text = yytext; return PLUMIN;
+{float}      yylval.text = yytext; return SEGFLOAT;
+\<           yylval.text = "<"; return EXTENSION;
+\>           yylval.text = ">"; return EXTENSION;
+\~           yylval.text = "~"; return EXTENSION;
 [ \t\n\r\f]+ /* discard spaces */
 .            return yytext[0]; /* alert parser of the garbage */
 
@@ -67,15 +56,11 @@ float        ({integer}|{real})([eE]{integer})?
 /* LCOV_EXCL_STOP */
 
 void
-seg_yyerror(SEG *result, struct Node *escontext, const char *message)
+yyerror(SEG *result, const char *message)
 {
-	/* if we already reported an error, don't overwrite it */
-	if (SOFT_ERROR_OCCURRED(escontext))
-		return;
-
 	if (*yytext == YY_END_OF_BUFFER_CHAR)
 	{
-		errsave(escontext,
+		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("bad seg representation"),
 				 /* translator: %s is typically "syntax error" */
@@ -83,7 +68,7 @@ seg_yyerror(SEG *result, struct Node *escontext, const char *message)
 	}
 	else
 	{
-		errsave(escontext,
+		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("bad seg representation"),
 				 /* translator: first %s is typically "syntax error" */
@@ -109,6 +94,7 @@ seg_scanner_init(const char *str)
 	/*
 	 * Make a scan buffer with special termination needed by flex.
 	 */
+	scanbuflen = slen;
 	scanbuf = palloc(slen + 2);
 	memcpy(scanbuf, str, slen);
 	scanbuf[slen] = scanbuf[slen + 1] = YY_END_OF_BUFFER_CHAR;

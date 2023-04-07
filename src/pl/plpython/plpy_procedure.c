@@ -324,8 +324,10 @@ PLy_procedure_create(HeapTuple procTup, Oid fn_oid, bool is_trigger)
 		/*
 		 * get the text of the function.
 		 */
-		prosrcdatum = SysCacheGetAttrNotNull(PROCOID, procTup,
-											 Anum_pg_proc_prosrc);
+		prosrcdatum = SysCacheGetAttr(PROCOID, procTup,
+									  Anum_pg_proc_prosrc, &isnull);
+		if (isnull)
+			elog(ERROR, "null prosrc");
 		procSource = TextDatumGetCString(prosrcdatum);
 
 		PLy_procedure_compile(proc, procSource);

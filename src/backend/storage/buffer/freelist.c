@@ -4,7 +4,7 @@
  *	  routines for managing the buffer pool's replacement strategy.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,7 +15,6 @@
  */
 #include "postgres.h"
 
-#include "pgstat.h"
 #include "port/atomics.h"
 #include "storage/buf_internals.h"
 #include "storage/bufmgr.h"
@@ -74,13 +73,19 @@ typedef struct BufferAccessStrategyData
 	/* Overall strategy type */
 	BufferAccessStrategyType btype;
 	/* Number of elements in buffers[] array */
-	int			nbuffers;
+	int			ring_size;
 
 	/*
 	 * Index of the "current" slot in the ring, ie, the one most recently
 	 * returned by GetBufferFromRing.
 	 */
 	int			current;
+
+	/*
+	 * True if the buffer just returned by StrategyGetBuffer had been in the
+	 * ring already.
+	 */
+	bool		current_was_in_ring;
 
 	/*
 	 * Array of buffer numbers.  InvalidBuffer (that is, zero) indicates we
@@ -193,14 +198,12 @@ have_free_buffer(void)
  *	return the buffer with the buffer header spinlock still held.
  */
 BufferDesc *
-StrategyGetBuffer(BufferAccessStrategy strategy, uint32 *buf_state, bool *from_ring)
+StrategyGetBuffer(BufferAccessStrategy strategy, uint32 *buf_state)
 {
 	BufferDesc *buf;
 	int			bgwprocno;
 	int			trycounter;
 	uint32		local_buf_state;	/* to avoid repeated (de-)referencing */
-
-	*from_ring = false;
 
 	/*
 	 * If given a strategy object, see whether it can select a buffer. We
@@ -210,10 +213,7 @@ StrategyGetBuffer(BufferAccessStrategy strategy, uint32 *buf_state, bool *from_r
 	{
 		buf = GetBufferFromRing(strategy, buf_state);
 		if (buf != NULL)
-		{
-			*from_ring = true;
 			return buf;
-		}
 	}
 
 	/*
@@ -541,7 +541,7 @@ BufferAccessStrategy
 GetAccessStrategy(BufferAccessStrategyType btype)
 {
 	BufferAccessStrategy strategy;
-	int			nbuffers;
+	int			ring_size;
 
 	/*
 	 * Select ring size to use.  See buffer/README for rationales.
@@ -556,13 +556,13 @@ GetAccessStrategy(BufferAccessStrategyType btype)
 			return NULL;
 
 		case BAS_BULKREAD:
-			nbuffers = 256 * 1024 / BLCKSZ;
+			ring_size = 256 * 1024 / BLCKSZ;
 			break;
 		case BAS_BULKWRITE:
-			nbuffers = 16 * 1024 * 1024 / BLCKSZ;
+			ring_size = 16 * 1024 * 1024 / BLCKSZ;
 			break;
 		case BAS_VACUUM:
-			nbuffers = 256 * 1024 / BLCKSZ;
+			ring_size = 256 * 1024 / BLCKSZ;
 			break;
 
 		default:
@@ -572,16 +572,16 @@ GetAccessStrategy(BufferAccessStrategyType btype)
 	}
 
 	/* Make sure ring isn't an undue fraction of shared buffers */
-	nbuffers = Min(NBuffers / 8, nbuffers);
+	ring_size = Min(NBuffers / 8, ring_size);
 
 	/* Allocate the object and initialize all elements to zeroes */
 	strategy = (BufferAccessStrategy)
 		palloc0(offsetof(BufferAccessStrategyData, buffers) +
-				nbuffers * sizeof(Buffer));
+				ring_size * sizeof(Buffer));
 
 	/* Set fields that don't start out zero */
 	strategy->btype = btype;
-	strategy->nbuffers = nbuffers;
+	strategy->ring_size = ring_size;
 
 	return strategy;
 }
@@ -602,7 +602,7 @@ FreeAccessStrategy(BufferAccessStrategy strategy)
 
 /*
  * GetBufferFromRing -- returns a buffer from the ring, or NULL if the
- *		ring is empty / not usable.
+ *		ring is empty.
  *
  * The bufhdr spin lock is held on the returned buffer.
  */
@@ -615,7 +615,7 @@ GetBufferFromRing(BufferAccessStrategy strategy, uint32 *buf_state)
 
 
 	/* Advance to next ring slot */
-	if (++strategy->current >= strategy->nbuffers)
+	if (++strategy->current >= strategy->ring_size)
 		strategy->current = 0;
 
 	/*
@@ -625,7 +625,10 @@ GetBufferFromRing(BufferAccessStrategy strategy, uint32 *buf_state)
 	 */
 	bufnum = strategy->buffers[strategy->current];
 	if (bufnum == InvalidBuffer)
+	{
+		strategy->current_was_in_ring = false;
 		return NULL;
+	}
 
 	/*
 	 * If the buffer is pinned we cannot use it under any circumstances.
@@ -641,6 +644,7 @@ GetBufferFromRing(BufferAccessStrategy strategy, uint32 *buf_state)
 	if (BUF_STATE_GET_REFCOUNT(local_buf_state) == 0
 		&& BUF_STATE_GET_USAGECOUNT(local_buf_state) <= 1)
 	{
+		strategy->current_was_in_ring = true;
 		*buf_state = local_buf_state;
 		return buf;
 	}
@@ -650,6 +654,7 @@ GetBufferFromRing(BufferAccessStrategy strategy, uint32 *buf_state)
 	 * Tell caller to allocate a new buffer with the normal allocation
 	 * strategy.  He'll then replace this ring element via AddBufferToRing.
 	 */
+	strategy->current_was_in_ring = false;
 	return NULL;
 }
 
@@ -666,39 +671,6 @@ AddBufferToRing(BufferAccessStrategy strategy, BufferDesc *buf)
 }
 
 /*
- * Utility function returning the IOContext of a given BufferAccessStrategy's
- * strategy ring.
- */
-IOContext
-IOContextForStrategy(BufferAccessStrategy strategy)
-{
-	if (!strategy)
-		return IOCONTEXT_NORMAL;
-
-	switch (strategy->btype)
-	{
-		case BAS_NORMAL:
-
-			/*
-			 * Currently, GetAccessStrategy() returns NULL for
-			 * BufferAccessStrategyType BAS_NORMAL, so this case is
-			 * unreachable.
-			 */
-			pg_unreachable();
-			return IOCONTEXT_NORMAL;
-		case BAS_BULKREAD:
-			return IOCONTEXT_BULKREAD;
-		case BAS_BULKWRITE:
-			return IOCONTEXT_BULKWRITE;
-		case BAS_VACUUM:
-			return IOCONTEXT_VACUUM;
-	}
-
-	elog(ERROR, "unrecognized BufferAccessStrategyType: %d", strategy->btype);
-	pg_unreachable();
-}
-
-/*
  * StrategyRejectBuffer -- consider rejecting a dirty buffer
  *
  * When a nondefault strategy is used, the buffer manager calls this function
@@ -710,14 +682,14 @@ IOContextForStrategy(BufferAccessStrategy strategy)
  * if this buffer should be written and re-used.
  */
 bool
-StrategyRejectBuffer(BufferAccessStrategy strategy, BufferDesc *buf, bool from_ring)
+StrategyRejectBuffer(BufferAccessStrategy strategy, BufferDesc *buf)
 {
 	/* We only do this in bulkread mode */
 	if (strategy->btype != BAS_BULKREAD)
 		return false;
 
 	/* Don't muck with behavior of normal buffer-replacement strategy */
-	if (!from_ring ||
+	if (!strategy->current_was_in_ring ||
 		strategy->buffers[strategy->current] != BufferDescriptorGetBuffer(buf))
 		return false;
 

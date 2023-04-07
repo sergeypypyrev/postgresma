@@ -3,7 +3,7 @@
  * rewriteheap.h
  *	  Declarations for heap rewrite support functions
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * src/include/access/rewriteheap.h
@@ -15,27 +15,27 @@
 
 #include "access/htup.h"
 #include "storage/itemptr.h"
-#include "storage/relfilelocator.h"
+#include "storage/relfilenode.h"
 #include "utils/relcache.h"
 
 /* struct definition is private to rewriteheap.c */
 typedef struct RewriteStateData *RewriteState;
 
-extern RewriteState begin_heap_rewrite(Relation old_heap, Relation new_heap,
-									   TransactionId oldest_xmin, TransactionId freeze_xid,
-									   MultiXactId cutoff_multi);
+extern RewriteState begin_heap_rewrite(Relation OldHeap, Relation NewHeap,
+									   TransactionId OldestXmin, TransactionId FreezeXid,
+									   MultiXactId MultiXactCutoff);
 extern void end_heap_rewrite(RewriteState state);
-extern void rewrite_heap_tuple(RewriteState state, HeapTuple old_tuple,
-							   HeapTuple new_tuple);
-extern bool rewrite_heap_dead_tuple(RewriteState state, HeapTuple old_tuple);
+extern void rewrite_heap_tuple(RewriteState state, HeapTuple oldTuple,
+							   HeapTuple newTuple);
+extern bool rewrite_heap_dead_tuple(RewriteState state, HeapTuple oldTuple);
 
 /*
  * On-Disk data format for an individual logical rewrite mapping.
  */
 typedef struct LogicalRewriteMappingData
 {
-	RelFileLocator old_locator;
-	RelFileLocator new_locator;
+	RelFileNode old_node;
+	RelFileNode new_node;
 	ItemPointerData old_tid;
 	ItemPointerData new_tid;
 } LogicalRewriteMappingData;

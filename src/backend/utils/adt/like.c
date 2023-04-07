@@ -7,7 +7,7 @@
  *		A big hack of the regexp.c code!! Contributed by
  *		Keith Parks <emkxp01@mtcc.demon.co.uk> (7/95).
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -24,7 +24,6 @@
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/pg_locale.h"
-#include "varatt.h"
 
 
 #define LIKE_TRUE						1
@@ -34,11 +33,11 @@
 
 static int	SB_MatchText(const char *t, int tlen, const char *p, int plen,
 						 pg_locale_t locale, bool locale_is_c);
-static text *SB_do_like_escape(text *pat, text *esc);
+static text *SB_do_like_escape(text *, text *);
 
 static int	MB_MatchText(const char *t, int tlen, const char *p, int plen,
 						 pg_locale_t locale, bool locale_is_c);
-static text *MB_do_like_escape(text *pat, text *esc);
+static text *MB_do_like_escape(text *, text *);
 
 static int	UTF8_MatchText(const char *t, int tlen, const char *p, int plen,
 						   pg_locale_t locale, bool locale_is_c);
@@ -155,7 +154,7 @@ GenericMatchText(const char *s, int slen, const char *p, int plen, Oid collation
 	{
 		pg_locale_t locale = pg_newlocale_from_collation(collation);
 
-		if (!pg_locale_deterministic(locale))
+		if (locale && !locale->deterministic)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("nondeterministic collations are not supported for LIKE")));
@@ -196,7 +195,7 @@ Generic_Text_IC_like(text *str, text *pat, Oid collation)
 	else
 		locale = pg_newlocale_from_collation(collation);
 
-	if (!pg_locale_deterministic(locale))
+	if (locale && !locale->deterministic)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("nondeterministic collations are not supported for ILIKE")));

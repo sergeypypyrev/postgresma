@@ -4,7 +4,7 @@
  *	  Declarations for Postgres multirange types.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/multirangetypes.h
@@ -42,26 +42,11 @@ typedef struct
 #define MultirangeIsEmpty(mr)  ((mr)->rangeCount == 0)
 
 /*
- * fmgr functions for multirange type objects
+ * fmgr macros for multirange type objects
  */
-static inline MultirangeType *
-DatumGetMultirangeTypeP(Datum X)
-{
-	return (MultirangeType *) PG_DETOAST_DATUM(X);
-}
-
-static inline MultirangeType *
-DatumGetMultirangeTypePCopy(Datum X)
-{
-	return (MultirangeType *) PG_DETOAST_DATUM_COPY(X);
-}
-
-static inline Datum
-MultirangeTypePGetDatum(const MultirangeType *X)
-{
-	return PointerGetDatum(X);
-}
-
+#define DatumGetMultirangeTypeP(X)		((MultirangeType *) PG_DETOAST_DATUM(X))
+#define DatumGetMultirangeTypePCopy(X)	((MultirangeType *) PG_DETOAST_DATUM_COPY(X))
+#define MultirangeTypePGetDatum(X)		PointerGetDatum(X)
 #define PG_GETARG_MULTIRANGE_P(n)		DatumGetMultirangeTypeP(PG_GETARG_DATUM(n))
 #define PG_GETARG_MULTIRANGE_P_COPY(n)	DatumGetMultirangeTypePCopy(PG_GETARG_DATUM(n))
 #define PG_RETURN_MULTIRANGE_P(x)		return MultirangeTypePGetDatum(x)
@@ -79,7 +64,7 @@ extern bool multirange_ne_internal(TypeCacheEntry *rangetyp,
 								   const MultirangeType *mr2);
 extern bool multirange_contains_elem_internal(TypeCacheEntry *rangetyp,
 											  const MultirangeType *mr,
-											  Datum val);
+											  Datum elem);
 extern bool multirange_contains_range_internal(TypeCacheEntry *rangetyp,
 											   const MultirangeType *mr,
 											   const RangeType *r);
@@ -130,11 +115,11 @@ extern MultirangeType *multirange_intersect_internal(Oid mltrngtypoid,
 extern TypeCacheEntry *multirange_get_typcache(FunctionCallInfo fcinfo,
 											   Oid mltrngtypid);
 extern void multirange_deserialize(TypeCacheEntry *rangetyp,
-								   const MultirangeType *multirange,
+								   const MultirangeType *range,
 								   int32 *range_count,
 								   RangeType ***ranges);
 extern MultirangeType *make_multirange(Oid mltrngtypoid,
-									   TypeCacheEntry *rangetyp,
+									   TypeCacheEntry *typcache,
 									   int32 range_count, RangeType **ranges);
 extern MultirangeType *make_empty_multirange(Oid mltrngtypoid,
 											 TypeCacheEntry *rangetyp);

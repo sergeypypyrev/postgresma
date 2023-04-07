@@ -3,7 +3,7 @@
  * time_mapping.c
  *	  time to XID mapping information
  *
- * Copyright (c) 2020-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2020-2022, PostgreSQL Global Development Group
  *
  *	  contrib/old_snapshot/time_mapping.c
  *-------------------------------------------------------------------------
@@ -38,6 +38,7 @@ PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pg_old_snapshot_time_mapping);
 
 static OldSnapshotTimeMapping *GetOldSnapshotTimeMapping(void);
+static TupleDesc MakeOldSnapshotTimeMappingTupleDesc(void);
 static HeapTuple MakeOldSnapshotTimeMappingTuple(TupleDesc tupdesc,
 												 OldSnapshotTimeMapping *mapping);
 
@@ -53,15 +54,12 @@ pg_old_snapshot_time_mapping(PG_FUNCTION_ARGS)
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext oldcontext;
-		TupleDesc	tupdesc;
 
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 		mapping = GetOldSnapshotTimeMapping();
 		funcctx->user_fctx = mapping;
-		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-			elog(ERROR, "return type must be a row type");
-		funcctx->tuple_desc = tupdesc;
+		funcctx->tuple_desc = MakeOldSnapshotTimeMappingTupleDesc();
 		MemoryContextSwitchTo(oldcontext);
 	}
 
@@ -101,6 +99,26 @@ GetOldSnapshotTimeMapping(void)
 	LWLockRelease(OldSnapshotTimeMapLock);
 
 	return mapping;
+}
+
+/*
+ * Build a tuple descriptor for the pg_old_snapshot_time_mapping() SRF.
+ */
+static TupleDesc
+MakeOldSnapshotTimeMappingTupleDesc(void)
+{
+	TupleDesc	tupdesc;
+
+	tupdesc = CreateTemplateTupleDesc(NUM_TIME_MAPPING_COLUMNS);
+
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "array_offset",
+					   INT4OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "end_timestamp",
+					   TIMESTAMPTZOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "newest_xmin",
+					   XIDOID, -1, 0);
+
+	return BlessTupleDesc(tupdesc);
 }
 
 /*

@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2023, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 =pod
 
@@ -159,8 +159,7 @@ INIT
 	$portdir = $ENV{PG_TEST_PORT_DIR};
 	# Otherwise, try to use a directory at the top of the build tree
 	# or as a last resort use the tmp_check directory
-	my $build_dir = $ENV{MESON_BUILD_ROOT}
-	  || $ENV{top_builddir}
+	my $build_dir = $ENV{top_builddir}
 	  || $PostgreSQL::Test::Utils::tmp_check ;
 	$portdir ||= "$build_dir/portlock";
 	$portdir =~ s!\\!/!g;
@@ -1625,14 +1624,7 @@ END
 
 	foreach my $node (@all_nodes)
 	{
-		# During unclean termination (which could be a signal or some
-		# other failure), we're not sure that the status of our nodes
-		# has been correctly set up already, so try and update it to
-		# improve our chances of shutting them down.
-		$node->_update_pid(-1) if $exit_code != 0;
-
-		# If that fails, don't let that foil other nodes' shutdown
-		$node->teardown_node(fail_ok => 1);
+		$node->teardown_node;
 
 		# skip clean if we are requested to retain the basedir
 		next if defined $ENV{'PG_TEST_NOCLEAN'};
@@ -1653,15 +1645,13 @@ END
 
 Do an immediate stop of the node
 
-Any optional extra parameter is passed to ->stop.
-
 =cut
 
 sub teardown_node
 {
-	my ($self, %params) = @_;
+	my $self = shift;
 
-	$self->stop('immediate', %params);
+	$self->stop('immediate');
 	return;
 }
 
@@ -1881,7 +1871,7 @@ sub psql
 	# and set the flag.  Otherwise, and for any other exception, rethrow.
 	#
 	# For background, see
-	# https://metacpan.org/release/ETHER/Try-Tiny-0.24/view/lib/Try/Tiny.pm
+	# https://metacpan.org/pod/release/ETHER/Try-Tiny-0.24/lib/Try/Tiny.pm
 	do
 	{
 		local $@;
@@ -2569,22 +2559,6 @@ sub issues_sql_like
 
 =pod
 
-=item $node->log_content()
-
-Returns the contents of log of the node
-
-=cut
-
-sub log_content
-{
-	my ($self) = @_;
-	return
-	  PostgreSQL::Test::Utils::slurp_file($self->logfile);
-}
-
-
-=pod
-
 =item $node->run_log(...)
 
 Runs a shell command like PostgreSQL::Test::Utils::run_log, but with connection parameters set
@@ -2726,29 +2700,6 @@ sub wait_for_catchup
 }
 
 =pod
-
-=item $node->wait_for_replay_catchup($standby_name [, $base_node ])
-
-Wait for the replication connection with application_name I<$standby_name>
-until its B<replay> replication column in pg_stat_replication in I<$node>
-equals or passes the I<$base_node>'s B<replay_lsn>. If I<$base_node> is
-omitted, the LSN to wait for is obtained from I<$node>.
-
-The replication connection must be in a streaming state.
-
-Requires that the 'postgres' db exists and is accessible.
-
-This is not a test. It die()s on failure.
-
-=cut
-
-sub wait_for_replay_catchup
-{
-	my ($self, $standby_name, $node) = @_;
-	$node = defined($node) ? $node : $self;
-
-	$self->wait_for_catchup($standby_name, 'replay', $node->lsn('flush'));
-}
 
 =item $node->wait_for_slot_catchup(slot_name, mode, target_lsn)
 
@@ -2925,7 +2876,7 @@ all values '' if not found. Does not differentiate between null and empty string
 for fields, no field is ever undef.
 
 The restart_lsn and confirmed_flush_lsn fields are returned verbatim, and also
-as a 2-list of [highword, lowword] integer. Since we rely on Perl 5.14 we can't
+as a 2-list of [highword, lowword] integer. Since we rely on Perl 5.8.8 we can't
 "use bigint", it's from 5.20, and we can't assume we have Math::Bigint from CPAN
 either.
 
@@ -3067,13 +3018,6 @@ sub corrupt_page_checksum
 	return;
 }
 
-#
-# Signal handlers
-#
-$SIG{TERM} = $SIG{INT} = sub {
-	die "death by signal";
-};
-
 =pod
 
 =back
@@ -3085,7 +3029,10 @@ $SIG{TERM} = $SIG{INT} = sub {
 package PostgreSQL::Test::Cluster::V_11
   ;    ## no critic (ProhibitMultiplePackages)
 
-use parent -norequire, qw(PostgreSQL::Test::Cluster);
+# parent.pm is not present in all perl versions before 5.10.1, so instead
+# do directly what it would do for this:
+# use parent -norequire, qw(PostgreSQL::Test::Cluster);
+push @PostgreSQL::Test::Cluster::V_11::ISA, 'PostgreSQL::Test::Cluster';
 
 # https://www.postgresql.org/docs/11/release-11.html
 
@@ -3113,7 +3060,8 @@ sub init
 package PostgreSQL::Test::Cluster::V_10
   ;    ## no critic (ProhibitMultiplePackages)
 
-use parent -norequire, qw(PostgreSQL::Test::Cluster::V_11);
+# use parent -norequire, qw(PostgreSQL::Test::Cluster::V_11);
+push @PostgreSQL::Test::Cluster::V_10::ISA, 'PostgreSQL::Test::Cluster::V_11';
 
 # https://www.postgresql.org/docs/10/release-10.html
 

@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/bloom.sgml -->
 
 <sect1 id="bloom" xreflabel="bloom">
- <title>bloom &mdash; bloom filter index access method</title>
+ <title>bloom</title>
 
  <indexterm zone="bloom">
   <primary>bloom</primary>
@@ -38,7 +38,7 @@
   indexes can also perform inequality and range searches.
  </para>
 
- <sect2 id="bloom-parameters">
+ <sect2>
   <title>Parameters</title>
 
   <para>
@@ -73,7 +73,7 @@
    </variablelist>
  </sect2>
 
- <sect2 id="bloom-examples">
+ <sect2>
   <title>Examples</title>
 
   <para>
@@ -215,7 +215,7 @@ CREATE INDEX
   </para>
  </sect2>
 
- <sect2 id="bloom-operator-class-interface">
+ <sect2>
   <title>Operator Class Interface</title>
 
   <para>
@@ -232,7 +232,7 @@ DEFAULT FOR TYPE text USING bloom AS
 </programlisting>
  </sect2>
 
- <sect2 id="bloom-limitations">
+ <sect2>
   <title>Limitations</title>
   <para>
    <itemizedlist>
@@ -268,7 +268,7 @@ DEFAULT FOR TYPE text USING bloom AS
   </para>
  </sect2>
 
- <sect2 id="bloom-authors">
+ <sect2>
   <title>Authors</title>
 
   <para>

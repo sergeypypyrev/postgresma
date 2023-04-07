@@ -28,6 +28,8 @@
  * exported functions
  */
 
+extern void _PG_init(void);
+
 PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(plpython3_validator);

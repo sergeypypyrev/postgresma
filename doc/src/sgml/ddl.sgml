@@ -325,54 +325,27 @@ CREATE TABLE people (
      </para>
     </listitem>
     <listitem>
-     <para>For inheritance and partitioning:</para>
+     <para>For inheritance:</para>
      <itemizedlist>
       <listitem>
        <para>
-        If a parent column is a generated column, its child column must also
-        be a generated column; however, the child column can have a
-        different generation expression.  The generation expression that is
-        actually applied during insert or update of a row is the one
-        associated with the table that the row is physically in.
-        (This is unlike the behavior for column defaults: for those, the
-        default value associated with the table named in the query applies.)
-       </para>
-      </listitem>
-      <listitem>
-       <para>
-        If a parent column is not a generated column, its child column must
-        not be generated either.
-       </para>
-      </listitem>
-      <listitem>
-       <para>
-        For inherited tables, if you write a child column definition without
-        any <literal>GENERATED</literal> clause in <command>CREATE TABLE
-        ... INHERITS</command>, then its <literal>GENERATED</literal> clause
-        will automatically be copied from the parent.  <command>ALTER TABLE
-        ... INHERIT</command> will insist that parent and child columns
-        already match as to generation status, but it will not require their
-        generation expressions to match.
-       </para>
-      </listitem>
-      <listitem>
-       <para>
-        Similarly for partitioned tables, if you write a child column
-        definition without any <literal>GENERATED</literal> clause
-        in <command>CREATE TABLE ... PARTITION OF</command>, then
-        its <literal>GENERATED</literal> clause will automatically be copied
-        from the parent.  <command>ALTER TABLE ... ATTACH PARTITION</command>
-        will insist that parent and child columns already match as to
-        generation status, but it will not require their generation
-        expressions to match.
+        If a parent column is a generated column, a child column must also be
+        a generated column using the same expression.  In the definition of
+        the child column, leave off the <literal>GENERATED</literal> clause,
+        as it will be copied from the parent.
        </para>
       </listitem>
       <listitem>
        <para>
         In case of multiple inheritance, if one parent column is a generated
-        column, then all parent columns must be generated columns.  If they
-        do not all have the same generation expression, then the desired
-        expression for the child must be specified explicitly.
+        column, then all parent columns must be generated columns and with the
+        same expression.
+       </para>
+      </listitem>
+      <listitem>
+       <para>
+        If a parent column is not a generated column, a child column may be
+        defined to be a generated column or not.
        </para>
       </listitem>
      </itemizedlist>
@@ -629,7 +602,7 @@ CREATE TABLE products (
    </note>
   </sect2>
 
-  <sect2 id="ddl-constraints-not-null">
+  <sect2>
    <title>Not-Null Constraints</title>
 
    <indexterm>
@@ -1257,7 +1230,7 @@ CREATE TABLE circles (
   </indexterm>
 
   <variablelist>
-   <varlistentry id="ddl-system-columns-tableoid">
+   <varlistentry>
     <term><structfield>tableoid</structfield></term>
     <listitem>
      <indexterm>
@@ -1277,7 +1250,7 @@ CREATE TABLE circles (
     </listitem>
    </varlistentry>
 
-   <varlistentry id="ddl-system-columns-xmin">
+   <varlistentry>
     <term><structfield>xmin</structfield></term>
     <listitem>
      <indexterm>
@@ -1293,7 +1266,7 @@ CREATE TABLE circles (
     </listitem>
    </varlistentry>
 
-   <varlistentry id="ddl-system-columns-cmin">
+   <varlistentry>
     <term><structfield>cmin</structfield></term>
     <listitem>
      <indexterm>
@@ -1307,7 +1280,7 @@ CREATE TABLE circles (
     </listitem>
    </varlistentry>
 
-   <varlistentry id="ddl-system-columns-xmax">
+   <varlistentry>
     <term><structfield>xmax</structfield></term>
     <listitem>
      <indexterm>
@@ -1324,7 +1297,7 @@ CREATE TABLE circles (
     </listitem>
    </varlistentry>
 
-   <varlistentry id="ddl-system-columns-cmax">
+   <varlistentry>
     <term><structfield>cmax</structfield></term>
     <listitem>
      <indexterm>
@@ -1337,7 +1310,7 @@ CREATE TABLE circles (
     </listitem>
    </varlistentry>
 
-   <varlistentry id="ddl-system-columns-ctid">
+   <varlistentry>
     <term><structfield>ctid</structfield></term>
     <listitem>
      <indexterm>
@@ -1585,7 +1558,7 @@ ALTER TABLE products ALTER COLUMN product_no DROP NOT NULL;
    </para>
   </sect2>
 
-  <sect2 id="ddl-alter-column-default">
+  <sect2>
    <title>Changing a Column's Default Value</title>
 
    <indexterm>
@@ -1614,7 +1587,7 @@ ALTER TABLE products ALTER COLUMN price DROP DEFAULT;
    </para>
   </sect2>
 
-  <sect2 id="ddl-alter-column-type">
+  <sect2>
    <title>Changing a Column's Data Type</title>
 
    <indexterm>
@@ -1643,7 +1616,7 @@ ALTER TABLE products ALTER COLUMN price TYPE numeric(10,2);
    </para>
   </sect2>
 
-  <sect2 id="ddl-alter-renaming-column">
+  <sect2>
    <title>Renaming a Column</title>
 
    <indexterm>
@@ -1659,7 +1632,7 @@ ALTER TABLE products RENAME COLUMN product_no TO product_number;
    </para>
   </sect2>
 
-  <sect2 id="ddl-alter-renaming-table">
+  <sect2>
    <title>Renaming a Table</title>
 
    <indexterm>
@@ -1718,8 +1691,8 @@ ALTER TABLE products RENAME TO items;
    <literal>INSERT</literal>, <literal>UPDATE</literal>, <literal>DELETE</literal>,
    <literal>TRUNCATE</literal>, <literal>REFERENCES</literal>, <literal>TRIGGER</literal>,
    <literal>CREATE</literal>, <literal>CONNECT</literal>, <literal>TEMPORARY</literal>,
-   <literal>EXECUTE</literal>, <literal>USAGE</literal>, <literal>SET</literal>,
-   <literal>ALTER SYSTEM</literal>, and <literal>MAINTAIN</literal>.
+   <literal>EXECUTE</literal>, <literal>USAGE</literal>, <literal>SET</literal>
+   and <literal>ALTER SYSTEM</literal>.
    The privileges applicable to a particular
    object vary depending on the object's type (table, function, etc.).
    More detail about the meanings of these privileges appears below.
@@ -1741,8 +1714,8 @@ ALTER TABLE products RENAME TO items;
 ALTER TABLE <replaceable>table_name</replaceable> OWNER TO <replaceable>new_owner</replaceable>;
 </programlisting>
    Superusers can always do this; ordinary roles can only do it if they are
-   both the current owner of the object (or inherit the privileges of the
-   owning role) and able to <literal>SET ROLE</literal> to the new owning role.
+   both the current owner of the object (or a member of the owning role) and
+   a member of the new owning role.
   </para>
 
   <para>
@@ -1795,7 +1768,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
    The available privileges are:
 
    <variablelist>
-    <varlistentry id="ddl-priv-select">
+    <varlistentry>
      <term><literal>SELECT</literal></term>
      <listitem>
       <para>
@@ -1804,8 +1777,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
        view, or other table-like object.
        Also allows use of <command>COPY TO</command>.
        This privilege is also needed to reference existing column values in
-       <command>UPDATE</command>, <command>DELETE</command>,
-       or <command>MERGE</command>.
+       <command>UPDATE</command> or <command>DELETE</command>.
        For sequences, this privilege also allows use of the
        <function>currval</function> function.
        For large objects, this privilege allows the object to be read.
@@ -1813,7 +1785,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ddl-priv-insert">
+    <varlistentry>
      <term><literal>INSERT</literal></term>
      <listitem>
       <para>
@@ -1826,7 +1798,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ddl-priv-update">
+    <varlistentry>
      <term><literal>UPDATE</literal></term>
      <listitem>
       <para>
@@ -1848,7 +1820,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ddl-priv-delete">
+    <varlistentry>
      <term><literal>DELETE</literal></term>
      <listitem>
       <para>
@@ -1860,7 +1832,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ddl-priv-truncate">
+    <varlistentry>
      <term><literal>TRUNCATE</literal></term>
      <listitem>
       <para>
@@ -1869,7 +1841,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ddl-priv-references">
+    <varlistentry>
      <term><literal>REFERENCES</literal></term>
      <listitem>
       <para>
@@ -1879,7 +1851,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ddl-priv-trigger">
+    <varlistentry>
      <term><literal>TRIGGER</literal></term>
      <listitem>
       <para>
@@ -1888,7 +1860,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ddl-priv-create">
+    <varlistentry>
      <term><literal>CREATE</literal></term>
      <listitem>
       <para>
@@ -1914,7 +1886,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ddl-priv-connect">
+    <varlistentry>
      <term><literal>CONNECT</literal></term>
      <listitem>
       <para>
@@ -1925,7 +1897,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ddl-priv-temporary">
+    <varlistentry>
      <term><literal>TEMPORARY</literal></term>
      <listitem>
       <para>
@@ -1934,7 +1906,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ddl-priv-execute">
+    <varlistentry>
      <term><literal>EXECUTE</literal></term>
      <listitem>
       <para>
@@ -1945,7 +1917,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ddl-priv-usage">
+    <varlistentry>
      <term><literal>USAGE</literal></term>
      <listitem>
       <para>
@@ -1989,7 +1961,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ddl-priv-set">
+    <varlistentry>
      <term><literal>SET</literal></term>
      <listitem>
       <para>
@@ -2001,7 +1973,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ddl-priv-alter-system">
+    <varlistentry>
      <term><literal>ALTER SYSTEM</literal></term>
      <listitem>
       <para>
@@ -2010,19 +1982,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
       </para>
      </listitem>
     </varlistentry>
-
-   <varlistentry id="ddl-priv-maintain">
-    <term><literal>MAINTAIN</literal></term>
-    <listitem>
-     <para>
-      Allows <command>VACUUM</command>, <command>ANALYZE</command>,
-      <command>CLUSTER</command>, <command>REFRESH MATERIALIZED VIEW</command>,
-      <command>REINDEX</command>, and <command>LOCK TABLE</command> on a
-      relation.
-     </para>
-    </listitem>
-   </varlistentry>
-  </variablelist>
+   </variablelist>
 
    The privileges required by other commands are listed on the
    reference page of the respective command.
@@ -2171,11 +2131,6 @@ REVOKE ALL ON accounts FROM PUBLIC;
       <entry><literal>A</literal></entry>
       <entry><literal>PARAMETER</literal></entry>
      </row>
-     <row>
-      <entry><literal>MAINTAIN</literal></entry>
-      <entry><literal>m</literal></entry>
-      <entry><literal>TABLE</literal></entry>
-     </row>
      </tbody>
    </tgroup>
   </table>
@@ -2266,7 +2221,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </row>
      <row>
       <entry><literal>TABLE</literal> (and table-like objects)</entry>
-      <entry><literal>arwdDxtm</literal></entry>
+      <entry><literal>arwdDxt</literal></entry>
       <entry>none</entry>
       <entry><literal>\dp</literal></entry>
      </row>
@@ -2325,11 +2280,11 @@ GRANT SELECT (col1), UPDATE (col1) ON mytable TO miriam_rw;
 <programlisting>
 =&gt; \dp mytable
                                   Access privileges
- Schema |  Name   | Type  |   Access privileges    |   Column privileges   | Policies
---------+---------+-------+------------------------+-----------------------+----------
- public | mytable | table | miriam=arwdDxtm/miriam+| col1:                +|
-        |         |       | =r/miriam             +|   miriam_rw=rw/miriam |
-        |         |       | admin=arw/miriam       |                       |
+ Schema |  Name   | Type  |   Access privileges   |   Column privileges   | Policies
+--------+---------+-------+-----------------------+-----------------------+----------
+ public | mytable | table | miriam=arwdDxt/miriam+| col1:                +|
+        |         |       | =r/miriam            +|   miriam_rw=rw/miriam |
+        |         |       | admin=arw/miriam      |                       |
 (1 row)
 </programlisting>
   </para>
@@ -2613,7 +2568,7 @@ postgres=&gt; table passwd;
 postgres=&gt; set role alice;
 SET
 postgres=&gt; table passwd;
-ERROR:  permission denied for table passwd
+ERROR:  permission denied for relation passwd
 postgres=&gt; select user_name,real_name,home_phone,extra_info,home_dir,shell from passwd;
  user_name | real_name |  home_phone  | extra_info | home_dir    |   shell
 -----------+-----------+--------------+------------+-------------+-----------
@@ -2623,7 +2578,7 @@ postgres=&gt; select user_name,real_name,home_phone,extra_info,home_dir,shell fr
 (3 rows)
 
 postgres=&gt; update passwd set user_name = 'joe';
-ERROR:  permission denied for table passwd
+ERROR:  permission denied for relation passwd
 -- Alice is allowed to change her own real_name, but no others
 postgres=&gt; update passwd set real_name = 'Alice Doe';
 UPDATE 1
@@ -2632,9 +2587,9 @@ UPDATE 0
 postgres=&gt; update passwd set shell = '/bin/xx';
 ERROR:  new row violates WITH CHECK OPTION for "passwd"
 postgres=&gt; delete from passwd;
-ERROR:  permission denied for table passwd
+ERROR:  permission denied for relation passwd
 postgres=&gt; insert into passwd (user_name) values ('xxx');
-ERROR:  permission denied for table passwd
+ERROR:  permission denied for relation passwd
 -- Alice can change her own password; RLS silently prevents updating other rows
 postgres=&gt; update passwd set pwhash = 'abc';
 UPDATE 1
@@ -3244,11 +3199,13 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
        name. Therefore, if each user has a separate schema, they access
        their own schemas by default.)  This pattern is a secure schema
        usage pattern unless an untrusted user is the database owner or
-       has been granted <literal>ADMIN OPTION</literal> on a relevant role,
-       in which case no secure schema usage pattern exists.
+       holds the <literal>CREATEROLE</literal> privilege, in which case no
+       secure schema usage pattern exists.
       </para>
       <!-- A database owner can attack the database's users via "CREATE SCHEMA
-           trojan; ALTER DATABASE $mydb SET search_path = trojan, public;". -->
+           trojan; ALTER DATABASE $mydb SET search_path = trojan, public;".  A
+           CREATEROLE user can issue "GRANT $dbowner TO $me" and then use the
+           database owner attack. -->
 
       <para>
        In <productname>PostgreSQL</productname> 15 and later, the default
@@ -3276,7 +3233,7 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
        unreliable</link>.  If you create functions or extensions in the public
        schema, use the first pattern instead.  Otherwise, like the first
        pattern, this is secure unless an untrusted user is the database owner
-       or has been granted <literal>ADMIN OPTION</literal> on a relevant role.
+       or holds the <literal>CREATEROLE</literal> privilege.
       </para>
      </listitem>
 
@@ -3774,7 +3731,7 @@ VALUES ('Albany', NULL, NULL, 'NY');
      following forms of partitioning:
 
      <variablelist>
-      <varlistentry id="ddl-partitioning-overview-range">
+      <varlistentry>
        <term>Range Partitioning</term>
 
        <listitem>
@@ -3795,7 +3752,7 @@ VALUES ('Albany', NULL, NULL, 'NY');
        </listitem>
       </varlistentry>
 
-      <varlistentry id="ddl-partitioning-overview-list">
+      <varlistentry>
        <term>List Partitioning</term>
 
        <listitem>
@@ -3806,7 +3763,7 @@ VALUES ('Albany', NULL, NULL, 'NY');
        </listitem>
       </varlistentry>
 
-      <varlistentry id="ddl-partitioning-overview-hash">
+      <varlistentry>
        <term>Hash Partitioning</term>
 
        <listitem>
@@ -4114,15 +4071,9 @@ CREATE TABLE measurement_y2008m02 PARTITION OF measurement
 </programlisting>
 
      As an alternative, it is sometimes more convenient to create the
-     new table outside the partition structure, and attach it as a
+     new table outside the partition structure, and make it a proper
      partition later. This allows new data to be loaded, checked, and
      transformed prior to it appearing in the partitioned table.
-     Moreover, the <literal>ATTACH PARTITION</literal> operation requires
-     only <literal>SHARE UPDATE EXCLUSIVE</literal> lock on the
-     partitioned table, as opposed to the <literal>ACCESS
-     EXCLUSIVE</literal> lock that is required by <command>CREATE TABLE
-     ... PARTITION OF</command>, so it is more friendly to concurrent
-     operations on the partitioned table.
      The <literal>CREATE TABLE ... LIKE</literal> option is helpful
      to avoid tediously repeating the parent table's definition:
 
@@ -4140,6 +4091,11 @@ ALTER TABLE measurement_y2008m02 ADD CONSTRAINT y2008m02
 ALTER TABLE measurement ATTACH PARTITION measurement_y2008m02
     FOR VALUES FROM ('2008-02-01') TO ('2008-03-01' );
 </programlisting>
+    </para>
+
+    <para>
+     The <command>ATTACH PARTITION</command> command requires taking a
+     <literal>SHARE UPDATE EXCLUSIVE</literal> lock on the partitioned table.
     </para>
 
     <para>

@@ -3,7 +3,7 @@
  * nbtxlog.h
  *	  header file for postgres btree xlog routines
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/nbtxlog.h
@@ -180,19 +180,17 @@ typedef struct xl_btree_dedup
  * This is what we need to know about page reuse within btree.  This record
  * only exists to generate a conflict point for Hot Standby.
  *
- * Note that we must include a RelFileLocator in the record because we don't
+ * Note that we must include a RelFileNode in the record because we don't
  * actually register the buffer with the record.
  */
 typedef struct xl_btree_reuse_page
 {
-	RelFileLocator locator;
+	RelFileNode node;
 	BlockNumber block;
-	FullTransactionId snapshotConflictHorizon;
-	bool		isCatalogRel;	/* to handle recovery conflict during logical
-								 * decoding on standby */
+	FullTransactionId latestRemovedFullXid;
 } xl_btree_reuse_page;
 
-#define SizeOfBtreeReusePage	(offsetof(xl_btree_reuse_page, isCatalogRel) + sizeof(bool))
+#define SizeOfBtreeReusePage	(sizeof(xl_btree_reuse_page))
 
 /*
  * xl_btree_vacuum and xl_btree_delete records describe deletion of index
@@ -201,7 +199,7 @@ typedef struct xl_btree_reuse_page
  * when btinsert() is called.
  *
  * The records are very similar.  The only difference is that xl_btree_delete
- * has a snapshotConflictHorizon field to generate recovery conflicts.
+ * has to include a latestRemovedXid field to generate recovery conflicts.
  * (VACUUM operations can just rely on earlier conflicts generated during
  * pruning of the table whose TIDs the to-be-deleted index tuples point to.
  * There are also small differences between each REDO routine that we don't go
@@ -234,22 +232,16 @@ typedef struct xl_btree_vacuum
 
 typedef struct xl_btree_delete
 {
-	TransactionId snapshotConflictHorizon;
+	TransactionId latestRemovedXid;
 	uint16		ndeleted;
 	uint16		nupdated;
-	bool		isCatalogRel;	/* to handle recovery conflict during logical
-								 * decoding on standby */
 
-	/*----
-	 * In payload of blk 0 :
-	 * - DELETED TARGET OFFSET NUMBERS
-	 * - UPDATED TARGET OFFSET NUMBERS
-	 * - UPDATED TUPLES METADATA (xl_btree_update) ARRAY
-	 *----
-	 */
+	/* DELETED TARGET OFFSET NUMBERS FOLLOW */
+	/* UPDATED TARGET OFFSET NUMBERS FOLLOW */
+	/* UPDATED TUPLES METADATA (xl_btree_update) ARRAY FOLLOWS */
 } xl_btree_delete;
 
-#define SizeOfBtreeDelete	(offsetof(xl_btree_delete, isCatalogRel) + sizeof(bool))
+#define SizeOfBtreeDelete	(offsetof(xl_btree_delete, nupdated) + sizeof(uint16))
 
 /*
  * The offsets that appear in xl_btree_update metadata are offsets into the
@@ -350,14 +342,10 @@ typedef struct xl_btree_newroot
  * prototypes for functions in nbtxlog.c
  */
 extern void btree_redo(XLogReaderState *record);
+extern void btree_desc(StringInfo buf, XLogReaderState *record);
+extern const char *btree_identify(uint8 info);
 extern void btree_xlog_startup(void);
 extern void btree_xlog_cleanup(void);
 extern void btree_mask(char *pagedata, BlockNumber blkno);
-
-/*
- * prototypes for functions in nbtdesc.c
- */
-extern void btree_desc(StringInfo buf, XLogReaderState *record);
-extern const char *btree_identify(uint8 info);
 
 #endif							/* NBTXLOG_H */

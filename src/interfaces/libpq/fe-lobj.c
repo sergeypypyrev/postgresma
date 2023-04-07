@@ -3,7 +3,7 @@
  * fe-lobj.c
  *	  Front-end large object interface
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -141,7 +141,8 @@ lo_truncate(PGconn *conn, int fd, size_t len)
 	/* Must check this on-the-fly because it's not there pre-8.3 */
 	if (conn->lobjfuncs->fn_lo_truncate == 0)
 	{
-		libpq_append_conn_error(conn, "cannot determine OID of function %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("cannot determine OID of function %s\n"),
 						  "lo_truncate");
 		return -1;
 	}
@@ -157,7 +158,8 @@ lo_truncate(PGconn *conn, int fd, size_t len)
 	 */
 	if (len > (size_t) INT_MAX)
 	{
-		libpq_append_conn_error(conn, "argument of lo_truncate exceeds integer range");
+		appendPQExpBufferStr(&conn->errorMessage,
+							 libpq_gettext("argument of lo_truncate exceeds integer range\n"));
 		return -1;
 	}
 
@@ -204,7 +206,8 @@ lo_truncate64(PGconn *conn, int fd, pg_int64 len)
 
 	if (conn->lobjfuncs->fn_lo_truncate64 == 0)
 	{
-		libpq_append_conn_error(conn, "cannot determine OID of function %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("cannot determine OID of function %s\n"),
 						  "lo_truncate64");
 		return -1;
 	}
@@ -259,7 +262,8 @@ lo_read(PGconn *conn, int fd, char *buf, size_t len)
 	 */
 	if (len > (size_t) INT_MAX)
 	{
-		libpq_append_conn_error(conn, "argument of lo_read exceeds integer range");
+		appendPQExpBufferStr(&conn->errorMessage,
+							 libpq_gettext("argument of lo_read exceeds integer range\n"));
 		return -1;
 	}
 
@@ -310,7 +314,8 @@ lo_write(PGconn *conn, int fd, const char *buf, size_t len)
 	 */
 	if (len > (size_t) INT_MAX)
 	{
-		libpq_append_conn_error(conn, "argument of lo_write exceeds integer range");
+		appendPQExpBufferStr(&conn->errorMessage,
+							 libpq_gettext("argument of lo_write exceeds integer range\n"));
 		return -1;
 	}
 
@@ -394,7 +399,8 @@ lo_lseek64(PGconn *conn, int fd, pg_int64 offset, int whence)
 
 	if (conn->lobjfuncs->fn_lo_lseek64 == 0)
 	{
-		libpq_append_conn_error(conn, "cannot determine OID of function %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("cannot determine OID of function %s\n"),
 						  "lo_lseek64");
 		return -1;
 	}
@@ -484,7 +490,8 @@ lo_create(PGconn *conn, Oid lobjId)
 	/* Must check this on-the-fly because it's not there pre-8.1 */
 	if (conn->lobjfuncs->fn_lo_create == 0)
 	{
-		libpq_append_conn_error(conn, "cannot determine OID of function %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("cannot determine OID of function %s\n"),
 						  "lo_create");
 		return InvalidOid;
 	}
@@ -557,7 +564,8 @@ lo_tell64(PGconn *conn, int fd)
 
 	if (conn->lobjfuncs->fn_lo_tell64 == 0)
 	{
-		libpq_append_conn_error(conn, "cannot determine OID of function %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("cannot determine OID of function %s\n"),
 						  "lo_tell64");
 		return -1;
 	}
@@ -666,7 +674,8 @@ lo_import_internal(PGconn *conn, const char *filename, Oid oid)
 	fd = open(filename, O_RDONLY | PG_BINARY, 0666);
 	if (fd < 0)
 	{							/* error */
-		libpq_append_conn_error(conn, "could not open file \"%s\": %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("could not open file \"%s\": %s\n"),
 						  filename, strerror_r(errno, sebuf, sizeof(sebuf)));
 		return InvalidOid;
 	}
@@ -722,7 +731,8 @@ lo_import_internal(PGconn *conn, const char *filename, Oid oid)
 		(void) close(fd);
 		/* deliberately overwrite any error from lo_close */
 		pqClearConnErrorState(conn);
-		libpq_append_conn_error(conn, "could not read from file \"%s\": %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("could not read from file \"%s\": %s\n"),
 						  filename,
 						  strerror_r(save_errno, sebuf, sizeof(sebuf)));
 		return InvalidOid;
@@ -777,7 +787,8 @@ lo_export(PGconn *conn, Oid lobjId, const char *filename)
 		(void) lo_close(conn, lobj);
 		/* deliberately overwrite any error from lo_close */
 		pqClearConnErrorState(conn);
-		libpq_append_conn_error(conn, "could not open file \"%s\": %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("could not open file \"%s\": %s\n"),
 						  filename,
 						  strerror_r(save_errno, sebuf, sizeof(sebuf)));
 		return -1;
@@ -798,7 +809,8 @@ lo_export(PGconn *conn, Oid lobjId, const char *filename)
 			(void) close(fd);
 			/* deliberately overwrite any error from lo_close */
 			pqClearConnErrorState(conn);
-			libpq_append_conn_error(conn, "could not write to file \"%s\": %s",
+			appendPQExpBuffer(&conn->errorMessage,
+							  libpq_gettext("could not write to file \"%s\": %s\n"),
 							  filename,
 							  strerror_r(save_errno, sebuf, sizeof(sebuf)));
 			return -1;
@@ -821,7 +833,8 @@ lo_export(PGconn *conn, Oid lobjId, const char *filename)
 	/* if we already failed, don't overwrite that msg with a close error */
 	if (close(fd) != 0 && result >= 0)
 	{
-		libpq_append_conn_error(conn, "could not write to file \"%s\": %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("could not write to file \"%s\": %s\n"),
 						  filename, strerror_r(errno, sebuf, sizeof(sebuf)));
 		result = -1;
 	}
@@ -867,7 +880,8 @@ lo_initialize(PGconn *conn)
 	lobjfuncs = (PGlobjfuncs *) malloc(sizeof(PGlobjfuncs));
 	if (lobjfuncs == NULL)
 	{
-		libpq_append_conn_error(conn, "out of memory");
+		appendPQExpBufferStr(&conn->errorMessage,
+							 libpq_gettext("out of memory\n"));
 		return -1;
 	}
 	MemSet((char *) lobjfuncs, 0, sizeof(PGlobjfuncs));
@@ -905,7 +919,8 @@ lo_initialize(PGconn *conn)
 	{
 		free(lobjfuncs);
 		PQclear(res);
-		libpq_append_conn_error(conn, "query to initialize large object functions did not return data");
+		appendPQExpBufferStr(&conn->errorMessage,
+							 libpq_gettext("query to initialize large object functions did not return data\n"));
 		return -1;
 	}
 
@@ -953,56 +968,64 @@ lo_initialize(PGconn *conn)
 	 */
 	if (lobjfuncs->fn_lo_open == 0)
 	{
-		libpq_append_conn_error(conn, "cannot determine OID of function %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("cannot determine OID of function %s\n"),
 						  "lo_open");
 		free(lobjfuncs);
 		return -1;
 	}
 	if (lobjfuncs->fn_lo_close == 0)
 	{
-		libpq_append_conn_error(conn, "cannot determine OID of function %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("cannot determine OID of function %s\n"),
 						  "lo_close");
 		free(lobjfuncs);
 		return -1;
 	}
 	if (lobjfuncs->fn_lo_creat == 0)
 	{
-		libpq_append_conn_error(conn, "cannot determine OID of function %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("cannot determine OID of function %s\n"),
 						  "lo_creat");
 		free(lobjfuncs);
 		return -1;
 	}
 	if (lobjfuncs->fn_lo_unlink == 0)
 	{
-		libpq_append_conn_error(conn, "cannot determine OID of function %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("cannot determine OID of function %s\n"),
 						  "lo_unlink");
 		free(lobjfuncs);
 		return -1;
 	}
 	if (lobjfuncs->fn_lo_lseek == 0)
 	{
-		libpq_append_conn_error(conn, "cannot determine OID of function %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("cannot determine OID of function %s\n"),
 						  "lo_lseek");
 		free(lobjfuncs);
 		return -1;
 	}
 	if (lobjfuncs->fn_lo_tell == 0)
 	{
-		libpq_append_conn_error(conn, "cannot determine OID of function %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("cannot determine OID of function %s\n"),
 						  "lo_tell");
 		free(lobjfuncs);
 		return -1;
 	}
 	if (lobjfuncs->fn_lo_read == 0)
 	{
-		libpq_append_conn_error(conn, "cannot determine OID of function %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("cannot determine OID of function %s\n"),
 						  "loread");
 		free(lobjfuncs);
 		return -1;
 	}
 	if (lobjfuncs->fn_lo_write == 0)
 	{
-		libpq_append_conn_error(conn, "cannot determine OID of function %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("cannot determine OID of function %s\n"),
 						  "lowrite");
 		free(lobjfuncs);
 		return -1;

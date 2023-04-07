@@ -22,7 +22,7 @@ PostgreSQL documentation
  <refsynopsisdiv>
 <synopsis>
 CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXISTS ] <replaceable class="parameter">table_name</replaceable> ( [
-  { <replaceable class="parameter">column_name</replaceable> <replaceable class="parameter">data_type</replaceable> [ STORAGE { PLAIN | EXTERNAL | EXTENDED | MAIN | DEFAULT } ] [ COMPRESSION <replaceable>compression_method</replaceable> ] [ COLLATE <replaceable>collation</replaceable> ] [ <replaceable class="parameter">column_constraint</replaceable> [ ... ] ]
+  { <replaceable class="parameter">column_name</replaceable> <replaceable class="parameter">data_type</replaceable> [ COMPRESSION <replaceable>compression_method</replaceable> ] [ COLLATE <replaceable>collation</replaceable> ] [ <replaceable class="parameter">column_constraint</replaceable> [ ... ] ]
     | <replaceable>table_constraint</replaceable>
     | LIKE <replaceable>source_table</replaceable> [ <replaceable>like_option</replaceable> ... ] }
     [, ... ]
@@ -223,7 +223,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-if-not-exists">
+   <varlistentry>
     <term><literal>IF NOT EXISTS</literal></term>
     <listitem>
      <para>
@@ -235,7 +235,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-table-name">
+   <varlistentry>
     <term><replaceable class="parameter">table_name</replaceable></term>
     <listitem>
      <para>
@@ -244,7 +244,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-type-name">
+   <varlistentry>
     <term><literal>OF <replaceable class="parameter">type_name</replaceable></literal></term>
     <listitem>
      <para>
@@ -265,7 +265,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-column-name">
+   <varlistentry>
     <term><replaceable class="parameter">column_name</replaceable></term>
     <listitem>
      <para>
@@ -274,7 +274,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-data-type">
+   <varlistentry>
     <term><replaceable class="parameter">data_type</replaceable></term>
     <listitem>
      <para>
@@ -286,7 +286,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-collate">
+   <varlistentry>
     <term><literal>COLLATE <replaceable>collation</replaceable></literal></term>
     <listitem>
      <para>
@@ -297,36 +297,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-storage">
-    <term>
-     <literal>STORAGE { PLAIN | EXTERNAL | EXTENDED | MAIN | DEFAULT }</literal>
-     <indexterm>
-      <primary>TOAST</primary>
-      <secondary>per-column storage settings</secondary>
-     </indexterm>
-    </term>
-    <listitem>
-     <para>
-      This form sets the storage mode for the column. This controls whether this
-      column is held inline or in a secondary <acronym>TOAST</acronym> table,
-      and whether the data should be compressed or not. <literal>PLAIN</literal>
-      must be used for fixed-length values such as <type>integer</type> and is
-      inline, uncompressed. <literal>MAIN</literal> is for inline, compressible
-      data. <literal>EXTERNAL</literal> is for external, uncompressed data, and
-      <literal>EXTENDED</literal> is for external, compressed data.
-      Writing <literal>DEFAULT</literal> sets the storage mode to the default
-      mode for the column's data type.  <literal>EXTENDED</literal> is the
-      default for most data types that support non-<literal>PLAIN</literal>
-      storage.
-      Use of <literal>EXTERNAL</literal> will make substring operations on
-      very large <type>text</type> and <type>bytea</type> values run faster,
-      at the penalty of increased storage space.
-      See <xref linkend="storage-toast"/> for more information.
-     </para>
-    </listitem>
-   </varlistentry>
-
-   <varlistentry id="sql-createtable-parms-compression">
+   <varlistentry>
     <term><literal>COMPRESSION <replaceable class="parameter">compression_method</replaceable></literal></term>
     <listitem>
      <para>
@@ -351,7 +322,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-inherits">
+   <varlistentry>
     <term><literal>INHERITS ( <replaceable>parent_table</replaceable> [, ... ] )</literal></term>
     <listitem>
      <para>
@@ -408,7 +379,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-partition-by">
+   <varlistentry>
     <term><literal>PARTITION BY { RANGE | LIST | HASH } ( { <replaceable class="parameter">column_name</replaceable> | ( <replaceable class="parameter">expression</replaceable> ) } [ <replaceable class="parameter">opclass</replaceable> ] [, ...] ) </literal></term>
     <listitem>
      <para>
@@ -615,28 +586,16 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
      </para>
 
      <para>
-      Operations such as <command>TRUNCATE</command>
-      which normally affect a table and all of its
+      Operations such as TRUNCATE which normally affect a table and all of its
       inheritance children will cascade to all partitions, but may also be
-      performed on an individual partition.
+      performed on an individual partition.  Note that dropping a partition
+      with <literal>DROP TABLE</literal> requires taking an <literal>ACCESS
+      EXCLUSIVE</literal> lock on the parent table.
      </para>
-
-     <para>
-      Note that creating a partition using <literal>PARTITION OF</literal>
-      requires taking an <literal>ACCESS EXCLUSIVE</literal> lock on the
-      parent partitioned table.  Likewise, dropping a partition
-      with <command>DROP TABLE</command> requires taking
-      an <literal>ACCESS EXCLUSIVE</literal> lock on the parent table.
-      It is possible to use <link linkend="sql-altertable"><command>ALTER
-      TABLE ATTACH/DETACH PARTITION</command></link> to perform these
-      operations with a weaker lock, thus reducing interference with
-      concurrent operations on the partitioned table.
-     </para>
-
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-like">
+   <varlistentry>
     <term><literal>LIKE <replaceable>source_table</replaceable> [ <replaceable>like_option</replaceable> ... ]</literal></term>
     <listitem>
      <para>
@@ -668,7 +627,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       available options are:
 
       <variablelist>
-       <varlistentry id="sql-createtable-parms-like-opt-comments">
+       <varlistentry>
         <term><literal>INCLUDING COMMENTS</literal></term>
         <listitem>
          <para>
@@ -680,7 +639,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-like-opt-compression">
+       <varlistentry>
         <term><literal>INCLUDING COMPRESSION</literal></term>
         <listitem>
          <para>
@@ -691,7 +650,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-like-opt-constraints">
+       <varlistentry>
         <term><literal>INCLUDING CONSTRAINTS</literal></term>
         <listitem>
          <para>
@@ -702,7 +661,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-like-opt-defaults">
+       <varlistentry>
         <term><literal>INCLUDING DEFAULTS</literal></term>
         <listitem>
          <para>
@@ -716,7 +675,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-like-opt-generated">
+       <varlistentry>
         <term><literal>INCLUDING GENERATED</literal></term>
         <listitem>
          <para>
@@ -726,7 +685,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-like-opt-identity">
+       <varlistentry>
         <term><literal>INCLUDING IDENTITY</literal></term>
         <listitem>
          <para>
@@ -738,7 +697,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-like-opt-indexes">
+       <varlistentry>
         <term><literal>INCLUDING INDEXES</literal></term>
         <listitem>
          <para>
@@ -752,7 +711,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-like-opt-statistics">
+       <varlistentry>
         <term><literal>INCLUDING STATISTICS</literal></term>
         <listitem>
          <para>
@@ -761,7 +720,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-like-opt-storage">
+       <varlistentry>
         <term><literal>INCLUDING STORAGE</literal></term>
         <listitem>
          <para>
@@ -775,7 +734,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-like-opt-all">
+       <varlistentry>
         <term><literal>INCLUDING ALL</literal></term>
         <listitem>
          <para>
@@ -799,7 +758,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-constraint">
+   <varlistentry>
     <term><literal>CONSTRAINT <replaceable class="parameter">constraint_name</replaceable></literal></term>
     <listitem>
      <para>
@@ -813,7 +772,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-not-null">
+   <varlistentry>
     <term><literal>NOT NULL</literal></term>
     <listitem>
      <para>
@@ -822,7 +781,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-null">
+   <varlistentry>
     <term><literal>NULL</literal></term>
     <listitem>
      <para>
@@ -837,7 +796,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-check">
+   <varlistentry>
     <term><literal>CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ] </literal></term>
     <listitem>
      <para>
@@ -875,7 +834,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-default">
+   <varlistentry>
     <term><literal>DEFAULT
     <replaceable>default_expr</replaceable></literal></term>
     <listitem>
@@ -896,7 +855,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-generated-stored">
+   <varlistentry>
     <term><literal>GENERATED ALWAYS AS ( <replaceable>generation_expr</replaceable> ) STORED</literal><indexterm><primary>generated column</primary></indexterm></term>
     <listitem>
      <para>
@@ -918,7 +877,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-generated-identity">
+   <varlistentry>
     <term><literal>GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY [ ( <replaceable>sequence_options</replaceable> ) ]</literal></term>
     <listitem>
      <para>
@@ -962,7 +921,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-unique">
+   <varlistentry>
     <term><literal>UNIQUE [ NULLS [ NOT ] DISTINCT ]</literal> (column constraint)</term>
     <term><literal>UNIQUE [ NULLS [ NOT ] DISTINCT ] ( <replaceable class="parameter">column_name</replaceable> [, ... ] )</literal>
     <optional> <literal>INCLUDE ( <replaceable class="parameter">column_name</replaceable> [, ...])</literal> </optional> (table constraint)</term>
@@ -1016,7 +975,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-primary-key">
+   <varlistentry>
     <term><literal>PRIMARY KEY</literal> (column constraint)</term>
     <term><literal>PRIMARY KEY ( <replaceable class="parameter">column_name</replaceable> [, ... ] )</literal>
     <optional> <literal>INCLUDE ( <replaceable class="parameter">column_name</replaceable> [, ...])</literal> </optional> (table constraint)</term>
@@ -1119,7 +1078,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-references">
+   <varlistentry>
     <term><literal>REFERENCES <replaceable class="parameter">reftable</replaceable> [ ( <replaceable class="parameter">refcolumn</replaceable> ) ] [ MATCH <replaceable class="parameter">matchtype</replaceable> ] [ ON DELETE <replaceable class="parameter">referential_action</replaceable> ] [ ON UPDATE <replaceable class="parameter">referential_action</replaceable> ]</literal> (column constraint)</term>
 
    <term><literal>FOREIGN KEY ( <replaceable class="parameter">column_name</replaceable> [, ... ] )
@@ -1179,7 +1138,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       actions for each clause:
 
       <variablelist>
-       <varlistentry id="sql-createtable-parms-references-refact-no-action">
+       <varlistentry>
         <term><literal>NO ACTION</literal></term>
         <listitem>
          <para>
@@ -1192,7 +1151,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-references-refact-restrict">
+       <varlistentry>
         <term><literal>RESTRICT</literal></term>
         <listitem>
          <para>
@@ -1204,7 +1163,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-references-refact-cascade">
+       <varlistentry>
         <term><literal>CASCADE</literal></term>
         <listitem>
          <para>
@@ -1215,7 +1174,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-references-refact-set-null">
+       <varlistentry>
         <term><literal>SET NULL [ ( <replaceable>column_name</replaceable> [, ... ] ) ]</literal></term>
         <listitem>
          <para>
@@ -1226,7 +1185,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-references-refact-set-default">
+       <varlistentry>
         <term><literal>SET DEFAULT [ ( <replaceable>column_name</replaceable> [, ... ] ) ]</literal></term>
         <listitem>
          <para>
@@ -1250,7 +1209,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-deferrable">
+   <varlistentry>
     <term><literal>DEFERRABLE</literal></term>
     <term><literal>NOT DEFERRABLE</literal></term>
     <listitem>
@@ -1272,7 +1231,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-initially">
+   <varlistentry>
     <term><literal>INITIALLY IMMEDIATE</literal></term>
     <term><literal>INITIALLY DEFERRED</literal></term>
     <listitem>
@@ -1302,7 +1261,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-with">
+   <varlistentry>
     <term><literal>WITH ( <replaceable class="parameter">storage_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )</literal></term>
     <listitem>
      <para>
@@ -1316,7 +1275,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-without-oids">
+   <varlistentry>
     <term><literal>WITHOUT OIDS</literal></term>
     <listitem>
      <para>
@@ -1327,7 +1286,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-on-commit">
+   <varlistentry>
     <term><literal>ON COMMIT</literal></term>
     <listitem>
      <para>
@@ -1336,7 +1295,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       The three options are:
 
       <variablelist>
-       <varlistentry id="sql-createtable-parms-on-commit-preserve-rows">
+       <varlistentry>
         <term><literal>PRESERVE ROWS</literal></term>
         <listitem>
          <para>
@@ -1346,7 +1305,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-on-commit-delete-rows">
+       <varlistentry>
         <term><literal>DELETE ROWS</literal></term>
         <listitem>
          <para>
@@ -1359,7 +1318,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry id="sql-createtable-parms-on-commit-drop">
+       <varlistentry>
         <term><literal>DROP</literal></term>
         <listitem>
          <para>
@@ -1391,7 +1350,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry id="sql-createtable-parms-using-index-tablespace">
+   <varlistentry>
     <term><literal>USING INDEX TABLESPACE <replaceable class="parameter">tablespace_name</replaceable></literal></term>
     <listitem>
      <para>

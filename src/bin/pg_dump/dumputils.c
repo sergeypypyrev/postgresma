@@ -5,7 +5,7 @@
  * Basically this is stuff that is useful in both pg_dump and pg_dumpall.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pg_dump/dumputils.c
@@ -98,15 +98,18 @@ buildACLCommands(const char *name, const char *subname, const char *nspname,
 	/* Parse the acls array */
 	if (!parsePGArray(acls, &aclitems, &naclitems))
 	{
-		free(aclitems);
+		if (aclitems)
+			free(aclitems);
 		return false;
 	}
 
 	/* Parse the baseacls too */
 	if (!parsePGArray(baseacls, &baseitems, &nbaseitems))
 	{
-		free(aclitems);
-		free(baseitems);
+		if (aclitems)
+			free(aclitems);
+		if (baseitems)
+			free(baseitems);
 		return false;
 	}
 
@@ -184,9 +187,7 @@ buildACLCommands(const char *name, const char *subname, const char *nspname,
 							  prefix, privs->data, type);
 			if (nspname && *nspname)
 				appendPQExpBuffer(firstsql, "%s.", fmtId(nspname));
-			if (name && *name)
-				appendPQExpBuffer(firstsql, "%s ", name);
-			appendPQExpBufferStr(firstsql, "FROM ");
+			appendPQExpBuffer(firstsql, "%s FROM ", name);
 			if (grantee->len == 0)
 				appendPQExpBufferStr(firstsql, "PUBLIC;\n");
 			else
@@ -255,9 +256,7 @@ buildACLCommands(const char *name, const char *subname, const char *nspname,
 									  prefix, privs->data, type);
 					if (nspname && *nspname)
 						appendPQExpBuffer(thissql, "%s.", fmtId(nspname));
-					if (name && *name)
-						appendPQExpBuffer(thissql, "%s ", name);
-					appendPQExpBufferStr(thissql, "TO ");
+					appendPQExpBuffer(thissql, "%s TO ", name);
 					if (grantee->len == 0)
 						appendPQExpBufferStr(thissql, "PUBLIC;\n");
 					else
@@ -269,9 +268,7 @@ buildACLCommands(const char *name, const char *subname, const char *nspname,
 									  prefix, privswgo->data, type);
 					if (nspname && *nspname)
 						appendPQExpBuffer(thissql, "%s.", fmtId(nspname));
-					if (name && *name)
-						appendPQExpBuffer(thissql, "%s ", name);
-					appendPQExpBufferStr(thissql, "TO ");
+					appendPQExpBuffer(thissql, "%s TO ", name);
 					if (grantee->len == 0)
 						appendPQExpBufferStr(thissql, "PUBLIC");
 					else
@@ -301,10 +298,14 @@ buildACLCommands(const char *name, const char *subname, const char *nspname,
 	destroyPQExpBuffer(firstsql);
 	destroyPQExpBuffer(secondsql);
 
-	free(aclitems);
-	free(baseitems);
-	free(grantitems);
-	free(revokeitems);
+	if (aclitems)
+		free(aclitems);
+	if (baseitems)
+		free(baseitems);
+	if (grantitems)
+		free(grantitems);
+	if (revokeitems)
+		free(revokeitems);
 
 	return ok;
 }
@@ -463,7 +464,6 @@ do { \
 				CONVERT_PRIV('d', "DELETE");
 				CONVERT_PRIV('t', "TRIGGER");
 				CONVERT_PRIV('D', "TRUNCATE");
-				CONVERT_PRIV('m', "MAINTAIN");
 			}
 		}
 
@@ -683,7 +683,7 @@ emitShSecLabels(PGconn *conn, PGresult *res, PQExpBuffer buffer,
  * currently known to guc.c, so that it'd be unsafe for extensions to declare
  * GUC_LIST_QUOTE variables anyway.  Lacking a solution for that, it doesn't
  * seem worth the work to do more than have this list, which must be kept in
- * sync with the variables actually marked GUC_LIST_QUOTE in guc_tables.c.
+ * sync with the variables actually marked GUC_LIST_QUOTE in guc.c.
  */
 bool
 variable_is_guc_list_quote(const char *name)
@@ -821,7 +821,6 @@ SplitGUCList(char *rawstring, char separator,
  */
 void
 makeAlterConfigCommand(PGconn *conn, const char *configitem,
-					   const char *userset,
 					   const char *type, const char *name,
 					   const char *type2, const char *name2,
 					   PQExpBuffer buf)
@@ -879,10 +878,6 @@ makeAlterConfigCommand(PGconn *conn, const char *configitem,
 	}
 	else
 		appendStringLiteralConn(buf, pos, conn);
-
-	/* Add USER SET flag if specified in the string */
-	if (userset && !strcmp(userset, "t"))
-		appendPQExpBufferStr(buf, " USER SET");
 
 	appendPQExpBufferStr(buf, ";\n");
 

@@ -120,11 +120,16 @@ else
 	found_shlib=0
 	for d in "${python_libdir}" "${python_configdir}" /usr/lib64 /usr/lib
 	do
-		if test -e "$d/lib${ldlibrary}${DLSUFFIX}"; then
-			python_libdir="$d"
-			found_shlib=1
-			break 2
-		fi
+		# Note: DLSUFFIX is for loadable modules, not shared
+		# libraries, so cannot be used here portably.  Just
+		# check all known possibilities.
+		for e in .so .dll .dylib .sl; do
+			if test -e "$d/lib${ldlibrary}$e"; then
+				python_libdir="$d"
+				found_shlib=1
+				break 2
+			fi
+		done
 	done
 	# Some platforms (OpenBSD) require us to accept a bare versioned shlib
 	# (".so.n.n") as well. However, check this only after failing to find

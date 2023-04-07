@@ -4,7 +4,7 @@
  *	  POSTGRES table access method definitions.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/tableam.h
@@ -20,7 +20,7 @@
 #include "access/relscan.h"
 #include "access/sdir.h"
 #include "access/xact.h"
-#include "executor/tuptable.h"
+#include "utils/guc.h"
 #include "utils/rel.h"
 #include "utils/snapshot.h"
 
@@ -101,22 +101,6 @@ typedef enum TM_Result
 	/* lock couldn't be acquired, action skipped. Only used by lock_tuple */
 	TM_WouldBlock
 } TM_Result;
-
-/*
- * Result codes for table_update(..., update_indexes*..).
- * Used to determine which indexes to update.
- */
-typedef enum TU_UpdateIndexes
-{
-	/* No indexed columns were updated (incl. TID addressing of tuple) */
-	TU_None,
-
-	/* A non-summarizing indexed column was updated, or the TID has changed */
-	TU_All,
-
-	/* Only summarized columns were updated, TID is unchanged */
-	TU_Summarizing
-} TU_UpdateIndexes;
 
 /*
  * When table_tuple_update, table_tuple_delete, or table_tuple_lock fail
@@ -542,7 +526,7 @@ typedef struct TableAmRoutine
 								 bool wait,
 								 TM_FailureData *tmfd,
 								 LockTupleMode *lockmode,
-								 TU_UpdateIndexes *update_indexes);
+								 bool *update_indexes);
 
 	/* see table_tuple_lock() for reference about parameters */
 	TM_Result	(*tuple_lock) (Relation rel,
@@ -576,32 +560,32 @@ typedef struct TableAmRoutine
 	 */
 
 	/*
-	 * This callback needs to create new relation storage for `rel`, with
+	 * This callback needs to create a new relation filenode for `rel`, with
 	 * appropriate durability behaviour for `persistence`.
 	 *
 	 * Note that only the subset of the relcache filled by
 	 * RelationBuildLocalRelation() can be relied upon and that the relation's
 	 * catalog entries will either not yet exist (new relation), or will still
-	 * reference the old relfilelocator.
+	 * reference the old relfilenode.
 	 *
 	 * As output *freezeXid, *minmulti must be set to the values appropriate
 	 * for pg_class.{relfrozenxid, relminmxid}. For AMs that don't need those
 	 * fields to be filled they can be set to InvalidTransactionId and
 	 * InvalidMultiXactId, respectively.
 	 *
-	 * See also table_relation_set_new_filelocator().
+	 * See also table_relation_set_new_filenode().
 	 */
-	void		(*relation_set_new_filelocator) (Relation rel,
-												 const RelFileLocator *newrlocator,
-												 char persistence,
-												 TransactionId *freezeXid,
-												 MultiXactId *minmulti);
+	void		(*relation_set_new_filenode) (Relation rel,
+											  const RelFileNode *newrnode,
+											  char persistence,
+											  TransactionId *freezeXid,
+											  MultiXactId *minmulti);
 
 	/*
 	 * This callback needs to remove all contents from `rel`'s current
-	 * relfilelocator. No provisions for transactional behaviour need to be
-	 * made.  Often this can be implemented by truncating the underlying
-	 * storage to its minimal size.
+	 * relfilenode. No provisions for transactional behaviour need to be made.
+	 * Often this can be implemented by truncating the underlying storage to
+	 * its minimal size.
 	 *
 	 * See also table_relation_nontransactional_truncate().
 	 */
@@ -614,7 +598,7 @@ typedef struct TableAmRoutine
 	 * storage, unless it contains references to the tablespace internally.
 	 */
 	void		(*relation_copy_data) (Relation rel,
-									   const RelFileLocator *newrlocator);
+									   const RelFileNode *newrnode);
 
 	/* See table_relation_copy_for_cluster() */
 	void		(*relation_copy_for_cluster) (Relation NewTable,
@@ -879,13 +863,13 @@ typedef struct TableAmRoutine
  * for the relation.  Works for tables, views, foreign tables and partitioned
  * tables.
  */
-extern const TupleTableSlotOps *table_slot_callbacks(Relation relation);
+extern const TupleTableSlotOps *table_slot_callbacks(Relation rel);
 
 /*
  * Returns slot using the callbacks returned by table_slot_callbacks(), and
  * registers it on *reglist.
  */
-extern TupleTableSlot *table_slot_create(Relation relation, List **reglist);
+extern TupleTableSlot *table_slot_create(Relation rel, List **reglist);
 
 
 /* ----------------------------------------------------------------------------
@@ -911,7 +895,7 @@ table_beginscan(Relation rel, Snapshot snapshot,
  * Like table_beginscan(), but for scanning catalog. It'll automatically use a
  * snapshot appropriate for scanning catalog relations.
  */
-extern TableScanDesc table_beginscan_catalog(Relation relation, int nkeys,
+extern TableScanDesc table_beginscan_catalog(Relation rel, int nkeys,
 											 struct ScanKeyData *key);
 
 /*
@@ -1051,10 +1035,6 @@ table_scan_getnextslot(TableScanDesc sscan, ScanDirection direction, TupleTableS
 {
 	slot->tts_tableOid = RelationGetRelid(sscan->rs_rd);
 
-	/* We don't expect actual scans using NoMovementScanDirection */
-	Assert(direction == ForwardScanDirection ||
-		   direction == BackwardScanDirection);
-
 	/*
 	 * We don't expect direct calls to table_scan_getnextslot with valid
 	 * CheckXidAlive for catalog or regular tables.  See detailed comments in
@@ -1119,10 +1099,6 @@ table_scan_getnextslot_tidrange(TableScanDesc sscan, ScanDirection direction,
 	/* Ensure table_beginscan_tidrange() was used. */
 	Assert((sscan->rs_flags & SO_TYPE_TIDRANGESCAN) != 0);
 
-	/* We don't expect actual scans using NoMovementScanDirection */
-	Assert(direction == ForwardScanDirection ||
-		   direction == BackwardScanDirection);
-
 	return sscan->rs_rd->rd_tableam->scan_getnextslot_tidrange(sscan,
 															   direction,
 															   slot);
@@ -1157,7 +1133,7 @@ extern void table_parallelscan_initialize(Relation rel,
  *
  * Caller must hold a suitable lock on the relation.
  */
-extern TableScanDesc table_beginscan_parallel(Relation relation,
+extern TableScanDesc table_beginscan_parallel(Relation rel,
 											  ParallelTableScanDesc pscan);
 
 /*
@@ -1342,7 +1318,7 @@ table_tuple_satisfies_snapshot(Relation rel, TupleTableSlot *slot,
  * marked as deletable.  See comments above TM_IndexDelete and comments above
  * TM_IndexDeleteOp for full details.
  *
- * Returns a snapshotConflictHorizon transaction ID that caller places in
+ * Returns a latestRemovedXid transaction ID that caller generally places in
  * its index deletion WAL record.  This might be used during subsequent REDO
  * of the WAL record when in Hot Standby mode -- a recovery conflict for the
  * index deletion operation might be required on the standby.
@@ -1372,7 +1348,7 @@ table_index_delete_tuples(Relation rel, TM_IndexDeleteOp *delstate)
  * RelationGetBufferForTuple. See that method for more information.
  *
  * TABLE_INSERT_FROZEN should only be specified for inserts into
- * relation storage created during the current subtransaction and when
+ * relfilenodes created during the current subtransaction and when
  * there are no prior snapshots or pre-existing portals open.
  * This causes rows to be frozen, which is an MVCC violation and
  * requires explicit options chosen by user.
@@ -1530,7 +1506,7 @@ static inline TM_Result
 table_tuple_update(Relation rel, ItemPointer otid, TupleTableSlot *slot,
 				   CommandId cid, Snapshot snapshot, Snapshot crosscheck,
 				   bool wait, TM_FailureData *tmfd, LockTupleMode *lockmode,
-				   TU_UpdateIndexes *update_indexes)
+				   bool *update_indexes)
 {
 	return rel->rd_tableam->tuple_update(rel, otid, slot,
 										 cid, snapshot, crosscheck,
@@ -1601,34 +1577,33 @@ table_finish_bulk_insert(Relation rel, int options)
  */
 
 /*
- * Create storage for `rel` in `newrlocator`, with persistence set to
+ * Create storage for `rel` in `newrnode`, with persistence set to
  * `persistence`.
  *
  * This is used both during relation creation and various DDL operations to
- * create new rel storage that can be filled from scratch.  When creating
- * new storage for an existing relfilelocator, this should be called before the
+ * create a new relfilenode that can be filled from scratch.  When creating
+ * new storage for an existing relfilenode, this should be called before the
  * relcache entry has been updated.
  *
  * *freezeXid, *minmulti are set to the xid / multixact horizon for the table
  * that pg_class.{relfrozenxid, relminmxid} have to be set to.
  */
 static inline void
-table_relation_set_new_filelocator(Relation rel,
-								   const RelFileLocator *newrlocator,
-								   char persistence,
-								   TransactionId *freezeXid,
-								   MultiXactId *minmulti)
+table_relation_set_new_filenode(Relation rel,
+								const RelFileNode *newrnode,
+								char persistence,
+								TransactionId *freezeXid,
+								MultiXactId *minmulti)
 {
-	rel->rd_tableam->relation_set_new_filelocator(rel, newrlocator,
-												  persistence, freezeXid,
-												  minmulti);
+	rel->rd_tableam->relation_set_new_filenode(rel, newrnode, persistence,
+											   freezeXid, minmulti);
 }
 
 /*
  * Remove all table contents from `rel`, in a non-transactional manner.
  * Non-transactional meaning that there's no need to support rollbacks. This
- * commonly only is used to perform truncations for relation storage created in
- * the current transaction.
+ * commonly only is used to perform truncations for relfilenodes created in the
+ * current transaction.
  */
 static inline void
 table_relation_nontransactional_truncate(Relation rel)
@@ -1637,15 +1612,15 @@ table_relation_nontransactional_truncate(Relation rel)
 }
 
 /*
- * Copy data from `rel` into the new relfilelocator `newrlocator`. The new
- * relfilelocator may not have storage associated before this function is
+ * Copy data from `rel` into the new relfilenode `newrnode`. The new
+ * relfilenode may not have storage associated before this function is
  * called. This is only supposed to be used for low level operations like
  * changing a relation's tablespace.
  */
 static inline void
-table_relation_copy_data(Relation rel, const RelFileLocator *newrlocator)
+table_relation_copy_data(Relation rel, const RelFileNode *newrnode)
 {
-	rel->rd_tableam->relation_copy_data(rel, newrlocator);
+	rel->rd_tableam->relation_copy_data(rel, newrnode);
 }
 
 /*
@@ -1658,7 +1633,7 @@ table_relation_copy_data(Relation rel, const RelFileLocator *newrlocator)
  *   in that index's order; if false and OldIndex is InvalidOid, no sorting is
  *   performed
  * - OldIndex - see use_sort
- * - OldestXmin - computed by vacuum_get_cutoffs(), even when
+ * - OldestXmin - computed by vacuum_set_xid_limits(), even when
  *   not needed for the relation's AM
  * - *xid_cutoff - ditto
  * - *multi_cutoff - ditto
@@ -2054,7 +2029,7 @@ extern void simple_table_tuple_delete(Relation rel, ItemPointer tid,
 									  Snapshot snapshot);
 extern void simple_table_tuple_update(Relation rel, ItemPointer otid,
 									  TupleTableSlot *slot, Snapshot snapshot,
-									  TU_UpdateIndexes *update_indexes);
+									  bool *update_indexes);
 
 
 /* ----------------------------------------------------------------------------
@@ -2096,5 +2071,7 @@ extern void table_block_relation_estimate_size(Relation rel,
 
 extern const TableAmRoutine *GetTableAmRoutine(Oid amhandler);
 extern const TableAmRoutine *GetHeapamTableAmRoutine(void);
+extern bool check_default_table_access_method(char **newval, void **extra,
+											  GucSource source);
 
 #endif							/* TABLEAM_H */

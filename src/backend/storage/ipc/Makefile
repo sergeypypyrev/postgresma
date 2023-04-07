@@ -21,6 +21,7 @@ OBJS = \
 	shm_mq.o \
 	shm_toc.o \
 	shmem.o \
+	shmqueue.o \
 	signalfuncs.o \
 	sinval.o \
 	sinvaladt.o \

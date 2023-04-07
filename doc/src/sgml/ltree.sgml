@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/ltree.sgml -->
 
 <sect1 id="ltree" xreflabel="ltree">
- <title>ltree &mdash; hierarchical tree-like data type</title>
+ <title>ltree</title>
 
  <indexterm zone="ltree">
   <primary>ltree</primary>
@@ -19,15 +19,14 @@
   on the current database.
  </para>
 
- <sect2 id="ltree-definitions">
+ <sect2>
   <title>Definitions</title>
 
   <para>
-   A <firstterm>label</firstterm> is a sequence of alphanumeric characters,
-   underscores, and hyphens. Valid alphanumeric character ranges are
-   dependent on the database locale. For example, in C locale, the characters
-   <literal>A-Za-z0-9_-</literal> are allowed.
-   Labels must be no more than 1000 characters long.
+   A <firstterm>label</firstterm> is a sequence of alphanumeric characters
+   and underscores (for example, in C locale the characters
+   <literal>A-Za-z0-9_</literal> are allowed).
+   Labels must be less than 256 characters long.
   </para>
 
   <para>
@@ -188,7 +187,7 @@ Europe &amp; Russia*@ &amp; !Transportation
   </para>
  </sect2>
 
- <sect2 id="ltree-ops-funcs">
+ <sect2>
   <title>Operators and Functions</title>
 
   <para>
@@ -608,7 +607,7 @@ Europe &amp; Russia*@ &amp; !Transportation
   </table>
  </sect2>
 
- <sect2 id="ltree-indexes">
+ <sect2>
   <title>Indexes</title>
   <para>
    <filename>ltree</filename> supports several types of indexes that can speed
@@ -686,7 +685,7 @@ CREATE INDEX path_gist_idx ON test USING GIST (array_path gist__ltree_ops(siglen
   </itemizedlist>
  </sect2>
 
- <sect2 id="ltree-example">
+ <sect2>
   <title>Example</title>
 
   <para>
@@ -823,7 +822,7 @@ ltreetest=&gt; SELECT ins_label(path,2,'Space') FROM test WHERE path &lt;@ 'Top.
   </para>
  </sect2>
 
- <sect2 id="ltree-transforms">
+ <sect2>
   <title>Transforms</title>
 
   <para>
@@ -843,7 +842,7 @@ ltreetest=&gt; SELECT ins_label(path,2,'Space') FROM test WHERE path &lt;@ 'Top.
   </caution>
  </sect2>
 
- <sect2 id="ltree-authors">
+ <sect2>
   <title>Authors</title>
 
   <para>

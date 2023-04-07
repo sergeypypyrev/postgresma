@@ -3,7 +3,7 @@
  * event_trigger.c
  *	  PostgreSQL EVENT TRIGGER support code.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -94,7 +94,7 @@ static void AlterEventTriggerOwner_internal(Relation rel,
 static void error_duplicate_filter_variable(const char *defname);
 static Datum filter_list_to_array(List *filterlist);
 static Oid	insert_event_trigger_tuple(const char *trigname, const char *eventname,
-									   Oid evtOwner, Oid funcoid, List *taglist);
+									   Oid evtOwner, Oid funcoid, List *tags);
 static void validate_ddl_tags(const char *filtervar, List *taglist);
 static void validate_table_rewrite_tags(const char *filtervar, List *taglist);
 static void EventTriggerInvoke(List *fn_oid_list, EventTriggerData *trigdata);
@@ -351,7 +351,8 @@ filter_list_to_array(List *filterlist)
 		pfree(result);
 	}
 
-	return PointerGetDatum(construct_array_builtin(data, l, TEXTOID));
+	return PointerGetDatum(construct_array(data, l, TEXTOID,
+										   -1, false, TYPALIGN_INT));
 }
 
 /*
@@ -379,7 +380,7 @@ AlterEventTrigger(AlterEventTrigStmt *stmt)
 	evtForm = (Form_pg_event_trigger) GETSTRUCT(tup);
 	trigoid = evtForm->oid;
 
-	if (!object_ownercheck(EventTriggerRelationId, trigoid, GetUserId()))
+	if (!pg_event_trigger_ownercheck(trigoid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_EVENT_TRIGGER,
 					   stmt->trigname);
 
@@ -471,7 +472,7 @@ AlterEventTriggerOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 	if (form->evtowner == newOwnerId)
 		return;
 
-	if (!object_ownercheck(EventTriggerRelationId, form->oid, GetUserId()))
+	if (!pg_event_trigger_ownercheck(form->oid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_EVENT_TRIGGER,
 					   NameStr(form->evtname));
 
@@ -1015,7 +1016,6 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 		case OCLASS_DATABASE:
 		case OCLASS_TBLSPACE:
 		case OCLASS_ROLE:
-		case OCLASS_ROLE_MEMBERSHIP:
 		case OCLASS_PARAMETER_ACL:
 			/* no support for global objects */
 			return false;
@@ -1144,9 +1144,9 @@ trackDroppedObjectsNeeded(void)
 	 * true if any sql_drop, table_rewrite, ddl_command_end event trigger
 	 * exists
 	 */
-	return (EventCacheLookup(EVT_SQLDrop) != NIL) ||
-		(EventCacheLookup(EVT_TableRewrite) != NIL) ||
-		(EventCacheLookup(EVT_DDLCommandEnd) != NIL);
+	return list_length(EventCacheLookup(EVT_SQLDrop)) > 0 ||
+		list_length(EventCacheLookup(EVT_TableRewrite)) > 0 ||
+		list_length(EventCacheLookup(EVT_DDLCommandEnd)) > 0;
 }
 
 /*
@@ -1311,10 +1311,13 @@ pg_event_trigger_dropped_objects(PG_FUNCTION_ARGS)
 	{
 		SQLDropObject *obj;
 		int			i = 0;
-		Datum		values[12] = {0};
-		bool		nulls[12] = {0};
+		Datum		values[12];
+		bool		nulls[12];
 
 		obj = slist_container(SQLDropObject, next, iter.cur);
+
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, 0, sizeof(nulls));
 
 		/* classid */
 		values[i++] = ObjectIdGetDatum(obj->address.classId);
@@ -1617,7 +1620,7 @@ EventTriggerAlterTableEnd(void)
 	parent = currentEventTriggerState->currentCommand->parent;
 
 	/* If no subcommands, don't collect */
-	if (currentEventTriggerState->currentCommand->d.alterTable.subcmds != NIL)
+	if (list_length(currentEventTriggerState->currentCommand->d.alterTable.subcmds) != 0)
 	{
 		MemoryContext oldcxt;
 
@@ -1838,7 +1841,7 @@ pg_event_trigger_ddl_commands(PG_FUNCTION_ARGS)
 	{
 		CollectedCommand *cmd = lfirst(lc);
 		Datum		values[9];
-		bool		nulls[9] = {0};
+		bool		nulls[9];
 		ObjectAddress addr;
 		int			i = 0;
 
@@ -1855,6 +1858,8 @@ pg_event_trigger_ddl_commands(PG_FUNCTION_ARGS)
 		if (cmd->type == SCT_Simple &&
 			!OidIsValid(cmd->d.simple.address.objectId))
 			continue;
+
+		MemSet(nulls, 0, sizeof(nulls));
 
 		switch (cmd->type)
 		{

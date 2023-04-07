@@ -3,7 +3,7 @@
  * fe-gssapi-common.c
  *     The front-end (client) GSSAPI common code
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -94,7 +94,8 @@ pg_GSS_load_servicename(PGconn *conn)
 	host = PQhost(conn);
 	if (!(host && host[0] != '\0'))
 	{
-		libpq_append_conn_error(conn, "host name must be specified");
+		appendPQExpBufferStr(&conn->errorMessage,
+							 libpq_gettext("host name must be specified\n"));
 		return STATUS_ERROR;
 	}
 
@@ -106,7 +107,8 @@ pg_GSS_load_servicename(PGconn *conn)
 	temp_gbuf.value = (char *) malloc(maxlen);
 	if (!temp_gbuf.value)
 	{
-		libpq_append_conn_error(conn, "out of memory");
+		appendPQExpBufferStr(&conn->errorMessage,
+							 libpq_gettext("out of memory\n"));
 		return STATUS_ERROR;
 	}
 	snprintf(temp_gbuf.value, maxlen, "%s@%s",

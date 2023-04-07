@@ -34,7 +34,7 @@
  * in the file to be read or written while holding only shared lock.
  *
  *
- * Copyright (c) 2008-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2008-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/pg_stat_statements/pg_stat_statements.c
@@ -55,7 +55,6 @@
 #include "jit/jit.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
-#include "nodes/queryjumble.h"
 #include "optimizer/planner.h"
 #include "parser/analyze.h"
 #include "parser/parsetree.h"
@@ -70,6 +69,7 @@
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/queryjumble.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
@@ -283,12 +283,11 @@ static const struct config_enum_entry track_options[] =
 	{NULL, 0, false}
 };
 
-static int	pgss_max = 5000;	/* max # statements to track */
-static int	pgss_track = PGSS_TRACK_TOP;	/* tracking level */
-static bool pgss_track_utility = true;	/* whether to track utility commands */
-static bool pgss_track_planning = false;	/* whether to track planning
-											 * duration */
-static bool pgss_save = true;	/* whether to save stats across shutdown */
+static int	pgss_max;			/* max # statements to track */
+static int	pgss_track;			/* tracking level */
+static bool pgss_track_utility; /* whether to track utility commands */
+static bool pgss_track_planning;	/* whether to track planning duration */
+static bool pgss_save;			/* whether to save stats across shutdown */
 
 
 #define pgss_enabled(level) \
@@ -305,6 +304,8 @@ static bool pgss_save = true;	/* whether to save stats across shutdown */
 	} while(0)
 
 /*---- Function declarations ----*/
+
+void		_PG_init(void);
 
 PG_FUNCTION_INFO_V1(pg_stat_statements_reset);
 PG_FUNCTION_INFO_V1(pg_stat_statements_reset_1_7);
@@ -808,7 +809,8 @@ error:
 			(errcode_for_file_access(),
 			 errmsg("could not write file \"%s\": %m",
 					PGSS_DUMP_FILE ".tmp")));
-	free(qbuffer);
+	if (qbuffer)
+		free(qbuffer);
 	if (file)
 		FreeFile(file);
 	unlink(PGSS_DUMP_FILE ".tmp");
@@ -836,10 +838,8 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 	if (query->utilityStmt)
 	{
 		if (pgss_track_utility && !PGSS_HANDLED_UTILITY(query->utilityStmt))
-		{
 			query->queryId = UINT64CONST(0);
-			return;
-		}
+		return;
 	}
 
 	/*
@@ -1669,7 +1669,8 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			pgss->extent != extent ||
 			pgss->gc_count != gc_count)
 		{
-			free(qbuffer);
+			if (qbuffer)
+				free(qbuffer);
 			qbuffer = qtext_load_file(&qbuffer_size);
 		}
 	}
@@ -1853,7 +1854,8 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 
 	LWLockRelease(pgss->lock);
 
-	free(qbuffer);
+	if (qbuffer)
+		free(qbuffer);
 }
 
 /* Number of output arguments (columns) for pg_stat_statements_info */
@@ -1867,8 +1869,8 @@ pg_stat_statements_info(PG_FUNCTION_ARGS)
 {
 	pgssGlobalStats stats;
 	TupleDesc	tupdesc;
-	Datum		values[PG_STAT_STATEMENTS_INFO_COLS] = {0};
-	bool		nulls[PG_STAT_STATEMENTS_INFO_COLS] = {0};
+	Datum		values[PG_STAT_STATEMENTS_INFO_COLS];
+	bool		nulls[PG_STAT_STATEMENTS_INFO_COLS];
 
 	if (!pgss || !pgss_hash)
 		ereport(ERROR,
@@ -1878,6 +1880,9 @@ pg_stat_statements_info(PG_FUNCTION_ARGS)
 	/* Build a tuple descriptor for our result type */
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "return type must be a row type");
+
+	MemSet(values, 0, sizeof(values));
+	MemSet(nulls, 0, sizeof(nulls));
 
 	/* Read global statistics for pg_stat_statements */
 	{
@@ -2471,7 +2476,8 @@ gc_fail:
 	/* clean up resources */
 	if (qfile)
 		FreeFile(qfile);
-	free(qbuffer);
+	if (qbuffer)
+		free(qbuffer);
 
 	/*
 	 * Since the contents of the external file are now uncertain, mark all

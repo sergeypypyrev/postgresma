@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2022, PostgreSQL Global Development Group
  *
  * src/bin/psql/variables.c
  */
@@ -255,7 +255,8 @@ SetVariable(VariableSpace space, const char *name, const char *value)
 
 			if (confirmed)
 			{
-				pg_free(current->value);
+				if (current->value)
+					pg_free(current->value);
 				current->value = new_value;
 
 				/*
@@ -271,7 +272,7 @@ SetVariable(VariableSpace space, const char *name, const char *value)
 					free(current);
 				}
 			}
-			else
+			else if (new_value)
 				pg_free(new_value); /* current->value is left unchanged */
 
 			return confirmed;

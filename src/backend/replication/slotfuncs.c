@@ -3,7 +3,7 @@
  * slotfuncs.c
  *	   Support functions for replication slots
  *
- * Copyright (c) 2012-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/slotfuncs.c
@@ -226,8 +226,7 @@ pg_drop_replication_slot(PG_FUNCTION_ARGS)
 }
 
 /*
- * pg_get_replication_slots - SQL SRF showing all replication slots
- * that currently exist on the database cluster.
+ * pg_get_replication_slots - SQL SRF showing active replication slots.
  */
 Datum
 pg_get_replication_slots(PG_FUNCTION_ARGS)

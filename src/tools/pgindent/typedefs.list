@@ -26,7 +26,6 @@ AcquireSampleRowsFunc
 ActionList
 ActiveSnapshotElt
 AddForeignUpdateTargets_function
-AddrInfo
 AffixNode
 AffixNodeData
 AfterTriggerEvent
@@ -57,7 +56,7 @@ AggregateInstrumentation
 AlenState
 Alias
 AllocBlock
-AllocFreeListLink
+AllocChunk
 AllocPointer
 AllocSet
 AllocSetContext
@@ -129,7 +128,6 @@ ArchiveHandle
 ArchiveMode
 ArchiveModuleCallbacks
 ArchiveModuleInit
-ArchiveModuleState
 ArchiveOpts
 ArchiveShutdownCB
 ArchiveStreamState
@@ -235,7 +233,6 @@ BackgroundWorker
 BackgroundWorkerArray
 BackgroundWorkerHandle
 BackgroundWorkerSlot
-BackupState
 Barrier
 BaseBackupCmd
 BaseBackupTargetHandle
@@ -376,7 +373,6 @@ CkptTsStatus
 ClientAuthentication_hook_type
 ClientCertMode
 ClientCertName
-ClientConnectionInfo
 ClientData
 ClonePtrType
 ClosePortalStmt
@@ -430,7 +426,7 @@ CompiledExprState
 CompositeIOData
 CompositeTypeStmt
 CompoundAffixFlag
-CompressFileHandle
+CompressionAlgorithm
 CompressionLocation
 CompressorState
 ComputeXidHorizonsResult
@@ -646,7 +642,6 @@ EquivalenceClass
 EquivalenceMember
 ErrorContextCallback
 ErrorData
-ErrorSaveContext
 EstimateDSMForeignScan_function
 EstimationInfo
 EventTriggerCacheEntry
@@ -951,6 +946,7 @@ GatherState
 Gene
 GeneratePruningStepsContext
 GenerationBlock
+GenerationChunk
 GenerationContext
 GenerationPointer
 GenericCosts
@@ -1037,7 +1033,6 @@ GucStack
 GucStackState
 GucStringAssignHook
 GucStringCheckHook
-GzipCompressorState
 HANDLE
 HASHACTION
 HASHBUCKET
@@ -1094,13 +1089,11 @@ HeadlineJsonState
 HeadlineParsedText
 HeadlineWordEntry
 HeapCheckContext
-HeapPageFreeze
 HeapScanDesc
 HeapTuple
 HeapTupleData
 HeapTupleFields
 HeapTupleForceOption
-HeapTupleFreeze
 HeapTupleHeader
 HeapTupleHeaderData
 HeapTupleTableSlot
@@ -1112,10 +1105,7 @@ ID
 INFIX
 INT128
 INTERFACE_INFO
-IOContext
 IOFuncSelector
-IOObject
-IOOp
 IPCompareMethod
 ITEM
 IV
@@ -1247,7 +1237,6 @@ JsonBehaviorType
 JsonCoercion
 JsonCommon
 JsonConstructorExpr
-JsonConstructorExprState
 JsonConstructorType
 JsonEncoding
 JsonExpr
@@ -1389,13 +1378,11 @@ LWLock
 LWLockHandle
 LWLockMode
 LWLockPadded
-LZ4CompressorState
 LZ4F_compressionContext_t
 LZ4F_decompressOptions_t
 LZ4F_decompressionContext_t
 LZ4F_errorCode_t
 LZ4F_preferences_t
-LZ4File
 LabelProvider
 LagTracker
 LargeObjectDesc
@@ -1477,7 +1464,6 @@ LogicalRepBeginData
 LogicalRepCommitData
 LogicalRepCommitPreparedTxnData
 LogicalRepCtxStruct
-LogicalRepMode
 LogicalRepMsgType
 LogicalRepPartMapEntry
 LogicalRepPreparedTxnData
@@ -1485,7 +1471,6 @@ LogicalRepRelId
 LogicalRepRelMapEntry
 LogicalRepRelation
 LogicalRepRollbackPreparedTxnData
-LogicalRepStreamAbortData
 LogicalRepTupleData
 LogicalRepTyp
 LogicalRepWorker
@@ -1522,13 +1507,11 @@ MemoizeKey
 MemoizePath
 MemoizeState
 MemoizeTuple
-MemoryChunk
 MemoryContext
 MemoryContextCallback
 MemoryContextCallbackFunction
 MemoryContextCounters
 MemoryContextData
-MemoryContextMethodID
 MemoryContextMethods
 MemoryStatsPrintFunc
 MergeAction
@@ -1703,7 +1686,6 @@ PGFileType
 PGFunction
 PGLZ_HistEntry
 PGLZ_Strategy
-PGLoadBalanceType
 PGMessageField
 PGModuleMagicFunction
 PGNoticeHooks
@@ -1859,6 +1841,7 @@ PROCESS_INFORMATION
 PROCLOCK
 PROCLOCKTAG
 PROC_HDR
+PROC_QUEUE
 PSID
 PSID_AND_ATTRIBUTES
 PSQL_COMP_CASE
@@ -1889,9 +1872,6 @@ PageXLogRecPtr
 PagetableEntry
 Pairs
 ParallelAppendState
-ParallelApplyWorkerEntry
-ParallelApplyWorkerInfo
-ParallelApplyWorkerShared
 ParallelBitmapHeapState
 ParallelBlockTableScanDesc
 ParallelBlockTableScanWorker
@@ -1911,7 +1891,6 @@ ParallelSlotResultHandler
 ParallelState
 ParallelTableScanDesc
 ParallelTableScanDescData
-ParallelTransState
 ParallelVacuumState
 ParallelWorkerContext
 ParallelWorkerInfo
@@ -1941,7 +1920,6 @@ ParserState
 PartClauseInfo
 PartClauseMatchStatus
 PartClauseTarget
-PartialFileSetState
 PartitionBoundInfo
 PartitionBoundInfoData
 PartitionBoundSpec
@@ -2028,16 +2006,15 @@ PgStatShared_Common
 PgStatShared_Database
 PgStatShared_Function
 PgStatShared_HashEntry
-PgStatShared_IO
 PgStatShared_Relation
 PgStatShared_ReplSlot
 PgStatShared_SLRU
 PgStatShared_Subscription
 PgStatShared_Wal
 PgStat_ArchiverStats
+PgStat_BackendFunctionEntry
 PgStat_BackendSubEntry
 PgStat_BgWriterStats
-PgStat_BktypeIO
 PgStat_CheckpointerStats
 PgStat_Counter
 PgStat_EntryRef
@@ -2046,12 +2023,10 @@ PgStat_FetchConsistency
 PgStat_FunctionCallUsage
 PgStat_FunctionCounts
 PgStat_HashKey
-PgStat_IO
 PgStat_Kind
 PgStat_KindInfo
 PgStat_LocalState
 PgStat_PendingDroppedStatsItem
-PgStat_PendingWalStats
 PgStat_SLRUStats
 PgStat_ShmemControl
 PgStat_Snapshot
@@ -2210,7 +2185,6 @@ RI_ConstraintInfo
 RI_QueryHashEntry
 RI_QueryKey
 RTEKind
-RTEPermissionInfo
 RWConflict
 RWConflictPoolHeader
 Range
@@ -2269,8 +2243,8 @@ ReindexObjectType
 ReindexParams
 ReindexStmt
 ReindexType
-RelFileLocator
-RelFileLocatorBackend
+RelFileNode
+RelFileNodeBackend
 RelIdCacheEnt
 RelInfo
 RelInfoArr
@@ -2288,8 +2262,8 @@ RelationPtr
 RelationSyncEntry
 RelcacheCallbackFunction
 ReleaseMatchCB
-RelfilenumberMapEntry
-RelfilenumberMapKey
+RelfilenodeMapEntry
+RelfilenodeMapKey
 Relids
 RelocationBufferInfo
 RelptrFreePageBtree
@@ -2325,7 +2299,6 @@ ReorderBufferToastEnt
 ReorderBufferTupleBuf
 ReorderBufferTupleCidEnt
 ReorderBufferTupleCidKey
-ReorderBufferUpdateProgressTxnCB
 ReorderTuple
 RepOriginId
 ReparameterizeForeignPathByChild_function
@@ -2394,6 +2367,7 @@ SERIALIZABLEXIDTAG
 SERVICE_STATUS
 SERVICE_STATUS_HANDLE
 SERVICE_TABLE_ENTRY
+SHM_QUEUE
 SID_AND_ATTRIBUTES
 SID_IDENTIFIER_AUTHORITY
 SID_NAME_USE
@@ -2420,6 +2394,8 @@ SQLFunctionCache
 SQLFunctionCachePtr
 SQLFunctionParseInfo
 SQLFunctionParseInfoPtr
+SQLValueFunction
+SQLValueFunctionOp
 SSL
 SSLExtensionInfoContext
 SSL_CTX
@@ -2465,7 +2441,6 @@ SerCommitSeqNo
 SerialControl
 SerializableXactHandle
 SerializedActiveRelMaps
-SerializedClientConnectionInfo
 SerializedRanges
 SerializedReindexState
 SerializedSnapshotData
@@ -2539,6 +2514,7 @@ SingleBoundSortItem
 Size
 SkipPages
 SlabBlock
+SlabChunk
 SlabContext
 SlabSlot
 SlotNumber
@@ -2795,7 +2771,6 @@ TocEntry
 TokenAuxData
 TokenizedAuthLine
 TrackItem
-TransApplyAction
 TransInvalidationInfo
 TransState
 TransactionId
@@ -2843,14 +2818,8 @@ TupleHashTable
 TupleQueueReader
 TupleTableSlot
 TupleTableSlotOps
-TuplesortClusterArg
-TuplesortDatumArg
-TuplesortIndexArg
-TuplesortIndexBTreeArg
-TuplesortIndexHashArg
 TuplesortInstrumentation
 TuplesortMethod
-TuplesortPublic
 TuplesortSpaceType
 Tuplesortstate
 Tuplestorestate
@@ -2949,7 +2918,6 @@ WALInsertLock
 WALInsertLockPadded
 WALOpenSegment
 WALReadError
-WalRcvWakeupReason
 WALSegmentCloseCB
 WALSegmentContext
 WALSegmentOpenCB
@@ -3200,7 +3168,6 @@ compare_context
 config_var_value
 contain_aggs_of_level_context
 convert_testexpr_context
-copy_data_dest_cb
 copy_data_source_cb
 core_YYSTYPE
 core_yy_extra_type
@@ -3217,7 +3184,6 @@ datapagemap_t
 dateKEY
 datetkn
 dce_uuid_t
-dclist_head
 decimal
 deparse_columns
 deparse_context
@@ -3289,7 +3255,6 @@ fix_scan_expr_context
 fix_upper_expr_context
 fix_windowagg_cond_context
 flatten_join_alias_vars_context
-flatten_rtes_walker_context
 float4
 float4KEY
 float8
@@ -3386,7 +3351,6 @@ intset_internal_node
 intset_leaf_node
 intset_node
 intvKEY
-io_stat_col
 itemIdCompact
 itemIdCompactData
 iterator
@@ -3540,6 +3504,7 @@ pg_wc_probefunc
 pg_wchar
 pg_wchar_tbl
 pgp_armor_headers_state
+pgpid_t
 pgsocket
 pgsql_thing_t
 pgssEntry
@@ -3589,7 +3554,6 @@ printTextFormat
 printTextLineFormat
 printTextLineWrap
 printTextRule
-printXheaderWidthType
 printfunc
 priv_map
 process_file_callback_t
@@ -3605,7 +3569,6 @@ pthread_mutex_t
 pthread_once_t
 pthread_t
 ptrdiff_t
-published_rel
 pull_var_clause_context
 pull_varattnos_context
 pull_varnos_context
@@ -3748,7 +3711,6 @@ timeout_params
 timerCA
 tlist_vinfo
 toast_compress_header
-tokenize_error_callback_arg
 transferMode
 transfer_thread_arg
 trgm
@@ -3857,7 +3819,6 @@ xl_hash_vacuum_one_page
 xl_heap_confirm
 xl_heap_delete
 xl_heap_freeze_page
-xl_heap_freeze_plan
 xl_heap_freeze_tuple
 xl_heap_header
 xl_heap_inplace
@@ -3903,7 +3864,7 @@ xl_xact_parsed_abort
 xl_xact_parsed_commit
 xl_xact_parsed_prepare
 xl_xact_prepare
-xl_xact_relfilelocators
+xl_xact_relfilenodes
 xl_xact_stats_item
 xl_xact_stats_items
 xl_xact_subxacts

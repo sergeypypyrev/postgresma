@@ -3,7 +3,7 @@
  * execCurrent.c
  *	  executor support for WHERE CURRENT OF cursor
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/executor/execCurrent.c
@@ -396,7 +396,7 @@ search_plan_tree(PlanState *node, Oid table_oid,
 			 */
 		case T_ResultState:
 		case T_LimitState:
-			result = search_plan_tree(outerPlanState(node),
+			result = search_plan_tree(node->lefttree,
 									  table_oid,
 									  pending_rescan);
 			break;

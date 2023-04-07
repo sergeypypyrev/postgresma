@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/unaccent.sgml -->
 
 <sect1 id="unaccent" xreflabel="unaccent">
- <title>unaccent &mdash; a text search dictionary which removes diacritics</title>
+ <title>unaccent</title>
 
  <indexterm zone="unaccent">
   <primary>unaccent</primary>
@@ -27,7 +27,7 @@
   on the current database.
  </para>
 
- <sect2 id="unaccent-configuration">
+ <sect2>
   <title>Configuration</title>
 
   <para>
@@ -107,7 +107,7 @@
   </para>
  </sect2>
 
- <sect2 id="unaccent-usage">
+ <sect2>
   <title>Usage</title>
 
   <para>
@@ -165,7 +165,7 @@ mydb=# select ts_headline('fr','H&ocirc;tel de la Mer',to_tsquery('fr','Hotels')
   </para>
  </sect2>
 
- <sect2 id="unaccent-functions">
+ <sect2>
  <title>Functions</title>
 
  <para>

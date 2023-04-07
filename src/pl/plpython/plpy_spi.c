@@ -105,7 +105,7 @@ PLy_spi_prepare(PyObject *self, PyObject *args)
 			 *information for input conversion.
 			 ********************************************************/
 
-			(void) parseTypeString(sptr, &typeId, &typmod, NULL);
+			parseTypeString(sptr, &typeId, &typmod, false);
 
 			Py_DECREF(optr);
 
@@ -236,18 +236,18 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 			PyObject   *elem;
 
 			elem = PySequence_GetItem(list, j);
-			PG_TRY(2);
+			PG_TRY();
 			{
 				bool		isnull;
 
 				plan->values[j] = PLy_output_convert(arg, elem, &isnull);
 				nulls[j] = isnull ? 'n' : ' ';
 			}
-			PG_FINALLY(2);
+			PG_FINALLY();
 			{
 				Py_DECREF(elem);
 			}
-			PG_END_TRY(2);
+			PG_END_TRY();
 		}
 
 		rv = SPI_execute_plan(plan->plan, plan->values, nulls,

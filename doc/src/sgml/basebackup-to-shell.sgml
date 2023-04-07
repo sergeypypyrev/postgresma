@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/basebackup-to-shell.sgml -->
 
 <sect1 id="basebackup-to-shell" xreflabel="basebackup_to_shell">
- <title>basebackup_to_shell &mdash; example "shell" pg_basebackup module</title>
+ <title>basebackup_to_shell</title>
 
  <indexterm zone="basebackup-to-shell">
   <primary>basebackup_to_shell</primary>
@@ -27,7 +27,7 @@
   <xref linkend="guc-local-preload-libraries"/>.
  </para>
 
- <sect2 id="basebackup-to-shell-configuration-parameters">
+ <sect2>
   <title>Configuration Parameters</title>
 
   <variablelist>
@@ -74,7 +74,7 @@
   </variablelist>
  </sect2>
 
- <sect2 id="basebackup-to-shell-author">
+ <sect2>
   <title>Author</title>
 
   <para>

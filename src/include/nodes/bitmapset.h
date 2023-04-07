@@ -5,11 +5,13 @@
  *
  * A bitmap set can represent any set of nonnegative integers, although
  * it is mainly intended for sets where the maximum value is not large,
- * say at most a few hundred.  By convention, we always represent the
- * empty set by a NULL pointer.
+ * say at most a few hundred.  By convention, a NULL pointer is always
+ * accepted by all operations to represent the empty set.  (But beware
+ * that this is not the only representation of the empty set.  Use
+ * bms_is_empty() in preference to testing for NULL.)
  *
  *
- * Copyright (c) 2003-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2022, PostgreSQL Global Development Group
  *
  * src/include/nodes/bitmapset.h
  *
@@ -17,8 +19,6 @@
  */
 #ifndef BITMAPSET_H
 #define BITMAPSET_H
-
-#include "nodes/nodes.h"
 
 /*
  * Forward decl to save including pg_list.h
@@ -48,9 +48,6 @@ typedef int32 signedbitmapword; /* must be the matching signed type */
 
 typedef struct Bitmapset
 {
-	pg_node_attr(custom_copy_equal, special_read_write, no_query_jumble)
-
-	NodeTag		type;
 	int			nwords;			/* number of words in array */
 	bitmapword	words[FLEXIBLE_ARRAY_MEMBER];	/* really [nwords] */
 } Bitmapset;
@@ -100,9 +97,7 @@ extern int	bms_num_members(const Bitmapset *a);
 
 /* optimized tests when we don't need to know exact membership count: */
 extern BMS_Membership bms_membership(const Bitmapset *a);
-
-/* NULL is now the only allowed representation of an empty bitmapset */
-#define bms_is_empty(a)  ((a) == NULL)
+extern bool bms_is_empty(const Bitmapset *a);
 
 /* these routines recycle (modify or free) their non-const inputs: */
 
@@ -115,6 +110,7 @@ extern Bitmapset *bms_del_members(Bitmapset *a, const Bitmapset *b);
 extern Bitmapset *bms_join(Bitmapset *a, Bitmapset *b);
 
 /* support for iterating through the integer elements of a set: */
+extern int	bms_first_member(Bitmapset *a);
 extern int	bms_next_member(const Bitmapset *a, int prevbit);
 extern int	bms_prev_member(const Bitmapset *a, int prevbit);
 

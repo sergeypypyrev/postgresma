@@ -7,7 +7,7 @@
  * accessed via the extended FE/BE query protocol.
  *
  *
- * Copyright (c) 2002-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/commands/prepare.c
@@ -98,7 +98,7 @@ PrepareQuery(ParseState *pstate, PrepareStmt *stmt,
 		int			i;
 		ListCell   *l;
 
-		argtypes = palloc_array(Oid, nargs);
+		argtypes = (Oid *) palloc(nargs * sizeof(Oid));
 		i = 0;
 
 		foreach(l, stmt->argtypes)
@@ -683,34 +683,19 @@ pg_prepared_statement(PG_FUNCTION_ARGS)
 		hash_seq_init(&hash_seq, prepared_queries);
 		while ((prep_stmt = hash_seq_search(&hash_seq)) != NULL)
 		{
-			TupleDesc	result_desc;
-			Datum		values[8];
-			bool		nulls[8] = {0};
+			Datum		values[7];
+			bool		nulls[7];
 
-			result_desc = prep_stmt->plansource->resultDesc;
+			MemSet(nulls, 0, sizeof(nulls));
 
 			values[0] = CStringGetTextDatum(prep_stmt->stmt_name);
 			values[1] = CStringGetTextDatum(prep_stmt->plansource->query_string);
 			values[2] = TimestampTzGetDatum(prep_stmt->prepare_time);
 			values[3] = build_regtype_array(prep_stmt->plansource->param_types,
 											prep_stmt->plansource->num_params);
-			if (result_desc)
-			{
-				Oid		   *result_types;
-
-				result_types = palloc_array(Oid, result_desc->natts);
-				for (int i = 0; i < result_desc->natts; i++)
-					result_types[i] = result_desc->attrs[i].atttypid;
-				values[4] = build_regtype_array(result_types, result_desc->natts);
-			}
-			else
-			{
-				/* no result descriptor (for example, DML statement) */
-				nulls[4] = true;
-			}
-			values[5] = BoolGetDatum(prep_stmt->from_sql);
-			values[6] = Int64GetDatumFast(prep_stmt->plansource->num_generic_plans);
-			values[7] = Int64GetDatumFast(prep_stmt->plansource->num_custom_plans);
+			values[4] = BoolGetDatum(prep_stmt->from_sql);
+			values[5] = Int64GetDatumFast(prep_stmt->plansource->num_generic_plans);
+			values[6] = Int64GetDatumFast(prep_stmt->plansource->num_custom_plans);
 
 			tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
 								 values, nulls);
@@ -732,11 +717,13 @@ build_regtype_array(Oid *param_types, int num_params)
 	ArrayType  *result;
 	int			i;
 
-	tmp_ary = palloc_array(Datum, num_params);
+	tmp_ary = (Datum *) palloc(num_params * sizeof(Datum));
 
 	for (i = 0; i < num_params; i++)
 		tmp_ary[i] = ObjectIdGetDatum(param_types[i]);
 
-	result = construct_array_builtin(tmp_ary, num_params, REGTYPEOID);
+	/* XXX: this hardcodes assumptions about the regtype type */
+	result = construct_array(tmp_ary, num_params, REGTYPEOID,
+							 4, true, TYPALIGN_INT);
 	return PointerGetDatum(result);
 }

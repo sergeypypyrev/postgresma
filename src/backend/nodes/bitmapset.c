@@ -5,11 +5,13 @@
  *
  * A bitmap set can represent any set of nonnegative integers, although
  * it is mainly intended for sets where the maximum value is not large,
- * say at most a few hundred.  By convention, we always represent the
- * empty set by a NULL pointer.
+ * say at most a few hundred.  By convention, a NULL pointer is always
+ * accepted by all operations to represent the empty set.  (But beware
+ * that this is not the only representation of the empty set.  Use
+ * bms_is_empty() in preference to testing for NULL.)
  *
  *
- * Copyright (c) 2003-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/nodes/bitmapset.c
@@ -64,8 +66,6 @@
 #error "invalid BITS_PER_BITMAPWORD"
 #endif
 
-static bool bms_is_empty_internal(const Bitmapset *a);
-
 
 /*
  * bms_copy - make a palloc'd copy of a bitmapset
@@ -104,10 +104,10 @@ bms_equal(const Bitmapset *a, const Bitmapset *b)
 	{
 		if (b == NULL)
 			return true;
-		return false;
+		return bms_is_empty(b);
 	}
 	else if (b == NULL)
-		return false;
+		return bms_is_empty(a);
 	/* Identify shorter and longer input */
 	if (a->nwords <= b->nwords)
 	{
@@ -151,9 +151,9 @@ bms_compare(const Bitmapset *a, const Bitmapset *b)
 
 	/* Handle cases where either input is NULL */
 	if (a == NULL)
-		return (b == NULL) ? 0 : -1;
+		return bms_is_empty(b) ? 0 : -1;
 	else if (b == NULL)
-		return +1;
+		return bms_is_empty(a) ? 0 : +1;
 	/* Handle cases where one input is longer than the other */
 	shortlen = Min(a->nwords, b->nwords);
 	for (i = shortlen; i < a->nwords; i++)
@@ -194,7 +194,6 @@ bms_make_singleton(int x)
 	wordnum = WORDNUM(x);
 	bitnum = BITNUM(x);
 	result = (Bitmapset *) palloc0(BITMAPSET_SIZE(wordnum + 1));
-	result->type = T_Bitmapset;
 	result->nwords = wordnum + 1;
 	result->words[wordnum] = ((bitmapword) 1 << bitnum);
 	return result;
@@ -282,12 +281,6 @@ bms_intersect(const Bitmapset *a, const Bitmapset *b)
 	resultlen = result->nwords;
 	for (i = 0; i < resultlen; i++)
 		result->words[i] &= other->words[i];
-	/* If we computed an empty result, we must return NULL */
-	if (bms_is_empty_internal(result))
-	{
-		pfree(result);
-		return NULL;
-	}
 	return result;
 }
 
@@ -306,22 +299,12 @@ bms_difference(const Bitmapset *a, const Bitmapset *b)
 		return NULL;
 	if (b == NULL)
 		return bms_copy(a);
-
-	/*
-	 * In Postgres' usage, an empty result is a very common case, so it's
-	 * worth optimizing for that by testing bms_nonempty_difference().  This
-	 * saves us a palloc/pfree cycle compared to checking after-the-fact.
-	 */
-	if (!bms_nonempty_difference(a, b))
-		return NULL;
-
 	/* Copy the left input */
 	result = bms_copy(a);
 	/* And remove b's bits from result */
 	shortlen = Min(a->nwords, b->nwords);
 	for (i = 0; i < shortlen; i++)
 		result->words[i] &= ~b->words[i];
-	/* Need not check for empty result, since we handled that case above */
 	return result;
 }
 
@@ -339,7 +322,7 @@ bms_is_subset(const Bitmapset *a, const Bitmapset *b)
 	if (a == NULL)
 		return true;			/* empty set is a subset of anything */
 	if (b == NULL)
-		return false;
+		return bms_is_empty(a);
 	/* Check common words */
 	shortlen = Min(a->nwords, b->nwords);
 	for (i = 0; i < shortlen; i++)
@@ -378,10 +361,10 @@ bms_subset_compare(const Bitmapset *a, const Bitmapset *b)
 	{
 		if (b == NULL)
 			return BMS_EQUAL;
-		return BMS_SUBSET1;
+		return bms_is_empty(b) ? BMS_EQUAL : BMS_SUBSET1;
 	}
 	if (b == NULL)
-		return BMS_SUBSET2;
+		return bms_is_empty(a) ? BMS_EQUAL : BMS_SUBSET2;
 	/* Check common words */
 	result = BMS_EQUAL;			/* status so far */
 	shortlen = Min(a->nwords, b->nwords);
@@ -570,7 +553,7 @@ bms_nonempty_difference(const Bitmapset *a, const Bitmapset *b)
 	if (a == NULL)
 		return false;
 	if (b == NULL)
-		return true;
+		return !bms_is_empty(a);
 	/* Check words in common */
 	shortlen = Min(a->nwords, b->nwords);
 	for (i = 0; i < shortlen; i++)
@@ -712,18 +695,18 @@ bms_membership(const Bitmapset *a)
 }
 
 /*
- * bms_is_empty_internal - is a set empty?
+ * bms_is_empty - is a set empty?
  *
- * This is now used only locally, to detect cases where a function has
- * computed an empty set that we must now get rid of.  Hence, we can
- * assume the input isn't NULL.
+ * This is even faster than bms_membership().
  */
-static bool
-bms_is_empty_internal(const Bitmapset *a)
+bool
+bms_is_empty(const Bitmapset *a)
 {
 	int			nwords;
 	int			wordnum;
 
+	if (a == NULL)
+		return true;
 	nwords = a->nwords;
 	for (wordnum = 0; wordnum < nwords; wordnum++)
 	{
@@ -802,12 +785,6 @@ bms_del_member(Bitmapset *a, int x)
 	bitnum = BITNUM(x);
 	if (wordnum < a->nwords)
 		a->words[wordnum] &= ~((bitmapword) 1 << bitnum);
-	/* If we computed an empty result, we must return NULL */
-	if (bms_is_empty_internal(a))
-	{
-		pfree(a);
-		return NULL;
-	}
 	return a;
 }
 
@@ -875,7 +852,6 @@ bms_add_range(Bitmapset *a, int lower, int upper)
 	if (a == NULL)
 	{
 		a = (Bitmapset *) palloc0(BITMAPSET_SIZE(uwordnum + 1));
-		a->type = T_Bitmapset;
 		a->nwords = uwordnum + 1;
 	}
 	else if (uwordnum >= a->nwords)
@@ -944,12 +920,6 @@ bms_int_members(Bitmapset *a, const Bitmapset *b)
 		a->words[i] &= b->words[i];
 	for (; i < a->nwords; i++)
 		a->words[i] = 0;
-	/* If we computed an empty result, we must return NULL */
-	if (bms_is_empty_internal(a))
-	{
-		pfree(a);
-		return NULL;
-	}
 	return a;
 }
 
@@ -971,12 +941,6 @@ bms_del_members(Bitmapset *a, const Bitmapset *b)
 	shortlen = Min(a->nwords, b->nwords);
 	for (i = 0; i < shortlen; i++)
 		a->words[i] &= ~b->words[i];
-	/* If we computed an empty result, we must return NULL */
-	if (bms_is_empty_internal(a))
-	{
-		pfree(a);
-		return NULL;
-	}
 	return a;
 }
 
@@ -1014,6 +978,48 @@ bms_join(Bitmapset *a, Bitmapset *b)
 	if (other != result)		/* pure paranoia */
 		pfree(other);
 	return result;
+}
+
+/*
+ * bms_first_member - find and remove first member of a set
+ *
+ * Returns -1 if set is empty.  NB: set is destructively modified!
+ *
+ * This is intended as support for iterating through the members of a set.
+ * The typical pattern is
+ *
+ *			while ((x = bms_first_member(inputset)) >= 0)
+ *				process member x;
+ *
+ * CAUTION: this destroys the content of "inputset".  If the set must
+ * not be modified, use bms_next_member instead.
+ */
+int
+bms_first_member(Bitmapset *a)
+{
+	int			nwords;
+	int			wordnum;
+
+	if (a == NULL)
+		return -1;
+	nwords = a->nwords;
+	for (wordnum = 0; wordnum < nwords; wordnum++)
+	{
+		bitmapword	w = a->words[wordnum];
+
+		if (w != 0)
+		{
+			int			result;
+
+			w = RIGHTMOST_ONE(w);
+			a->words[wordnum] &= ~w;
+
+			result = wordnum * BITS_PER_BITMAPWORD;
+			result += bmw_rightmost_one_pos(w);
+			return result;
+		}
+	}
+	return -1;
 }
 
 /*

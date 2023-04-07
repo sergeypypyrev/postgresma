@@ -22,7 +22,7 @@
  * at executor startup.  The Agg nodes are constructed much later in the
  * planning, however, so it's not trivial.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -223,17 +223,16 @@ preprocess_aggref(Aggref *aggref, PlannerInfo *root)
 	aggno = find_compatible_agg(root, aggref, &same_input_transnos);
 	if (aggno != -1)
 	{
-		AggInfo    *agginfo = list_nth_node(AggInfo, root->agginfos, aggno);
+		AggInfo    *agginfo = list_nth(root->agginfos, aggno);
 
-		agginfo->aggrefs = lappend(agginfo->aggrefs, aggref);
 		transno = agginfo->transno;
 	}
 	else
 	{
-		AggInfo    *agginfo = makeNode(AggInfo);
+		AggInfo    *agginfo = palloc(sizeof(AggInfo));
 
 		agginfo->finalfn_oid = aggfinalfn;
-		agginfo->aggrefs = list_make1(aggref);
+		agginfo->representative_aggref = aggref;
 		agginfo->shareable = shareable;
 
 		aggno = list_length(root->agginfos);
@@ -267,7 +266,7 @@ preprocess_aggref(Aggref *aggref, PlannerInfo *root)
 										same_input_transnos);
 		if (transno == -1)
 		{
-			AggTransInfo *transinfo = makeNode(AggTransInfo);
+			AggTransInfo *transinfo = palloc(sizeof(AggTransInfo));
 
 			transinfo->args = aggref->args;
 			transinfo->aggfilter = aggref->aggfilter;
@@ -305,30 +304,10 @@ preprocess_aggref(Aggref *aggref, PlannerInfo *root)
 				 * functions; if not, we can't serialize partial-aggregation
 				 * results.
 				 */
-				else if (transinfo->aggtranstype == INTERNALOID)
-				{
-
-					if (!OidIsValid(transinfo->serialfn_oid) ||
-						!OidIsValid(transinfo->deserialfn_oid))
-						root->hasNonSerialAggs = true;
-
-					/*
-					 * array_agg_serialize and array_agg_deserialize make use
-					 * of the aggregate non-byval input type's send and
-					 * receive functions.  There's a chance that the type
-					 * being aggregated has one or both of these functions
-					 * missing.  In this case we must not allow the
-					 * aggregate's serial and deserial functions to be used.
-					 * It would be nice not to have special case this and
-					 * instead provide some sort of supporting function within
-					 * the aggregate to do this, but for now, that seems like
-					 * overkill for this one case.
-					 */
-					if ((transinfo->serialfn_oid == F_ARRAY_AGG_SERIALIZE ||
-						 transinfo->deserialfn_oid == F_ARRAY_AGG_DESERIALIZE) &&
-						!agg_args_support_sendreceive(aggref))
-						root->hasNonSerialAggs = true;
-				}
+				else if (transinfo->aggtranstype == INTERNALOID &&
+						 (!OidIsValid(transinfo->serialfn_oid) ||
+						  !OidIsValid(transinfo->deserialfn_oid)))
+					root->hasNonSerialAggs = true;
 			}
 		}
 		agginfo->transno = transno;
@@ -402,12 +381,12 @@ find_compatible_agg(PlannerInfo *root, Aggref *newagg,
 	aggno = -1;
 	foreach(lc, root->agginfos)
 	{
-		AggInfo    *agginfo = lfirst_node(AggInfo, lc);
+		AggInfo    *agginfo = (AggInfo *) lfirst(lc);
 		Aggref	   *existingRef;
 
 		aggno++;
 
-		existingRef = linitial_node(Aggref, agginfo->aggrefs);
+		existingRef = agginfo->representative_aggref;
 
 		/* all of the following must be the same or it's no match */
 		if (newagg->inputcollid != existingRef->inputcollid ||
@@ -473,9 +452,7 @@ find_compatible_trans(PlannerInfo *root, Aggref *newagg, bool shareable,
 	foreach(lc, transnos)
 	{
 		int			transno = lfirst_int(lc);
-		AggTransInfo *pertrans = list_nth_node(AggTransInfo,
-											   root->aggtransinfos,
-											   transno);
+		AggTransInfo *pertrans = (AggTransInfo *) list_nth(root->aggtransinfos, transno);
 
 		/*
 		 * if the transfns or transition state types are not the same then the
@@ -564,7 +541,7 @@ get_agg_clause_costs(PlannerInfo *root, AggSplit aggsplit, AggClauseCosts *costs
 
 	foreach(lc, root->aggtransinfos)
 	{
-		AggTransInfo *transinfo = lfirst_node(AggTransInfo, lc);
+		AggTransInfo *transinfo = (AggTransInfo *) lfirst(lc);
 
 		/*
 		 * Add the appropriate component function execution costs to
@@ -668,8 +645,8 @@ get_agg_clause_costs(PlannerInfo *root, AggSplit aggsplit, AggClauseCosts *costs
 
 	foreach(lc, root->agginfos)
 	{
-		AggInfo    *agginfo = lfirst_node(AggInfo, lc);
-		Aggref	   *aggref = linitial_node(Aggref, agginfo->aggrefs);
+		AggInfo    *agginfo = (AggInfo *) lfirst(lc);
+		Aggref	   *aggref = agginfo->representative_aggref;
 
 		/*
 		 * Add the appropriate component function execution costs to

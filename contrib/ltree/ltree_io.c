@@ -11,7 +11,6 @@
 #include "libpq/pqformat.h"
 #include "ltree.h"
 #include "utils/memutils.h"
-#include "varatt.h"
 
 
 typedef struct
@@ -25,8 +24,8 @@ typedef struct
 #define LTPRS_WAITNAME	0
 #define LTPRS_WAITDELIM 1
 
-static bool finish_nodeitem(nodeitem *lptr, const char *ptr,
-							bool is_lquery, int pos, struct Node *escontext);
+static void finish_nodeitem(nodeitem *lptr, const char *ptr,
+							bool is_lquery, int pos);
 
 
 /*
@@ -34,7 +33,7 @@ static bool finish_nodeitem(nodeitem *lptr, const char *ptr,
  * returns an ltree
  */
 static ltree *
-parse_ltree(const char *buf, struct Node *escontext)
+parse_ltree(const char *buf)
 {
 	const char *ptr;
 	nodeitem   *list,
@@ -47,7 +46,7 @@ parse_ltree(const char *buf, struct Node *escontext)
 	int			charlen;
 	int			pos = 1;		/* character position for error messages */
 
-#define UNCHAR ereturn(escontext, NULL,\
+#define UNCHAR ereport(ERROR, \
 					   errcode(ERRCODE_SYNTAX_ERROR), \
 					   errmsg("ltree syntax error at character %d", \
 							  pos))
@@ -62,7 +61,7 @@ parse_ltree(const char *buf, struct Node *escontext)
 	}
 
 	if (num + 1 > LTREE_MAX_LEVELS)
-		ereturn(escontext, NULL,
+		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("number of ltree labels (%d) exceeds the maximum allowed (%d)",
 						num + 1, LTREE_MAX_LEVELS)));
@@ -75,7 +74,7 @@ parse_ltree(const char *buf, struct Node *escontext)
 		switch (state)
 		{
 			case LTPRS_WAITNAME:
-				if (ISLABEL(ptr))
+				if (ISALNUM(ptr))
 				{
 					lptr->start = ptr;
 					lptr->wlen = 0;
@@ -87,13 +86,12 @@ parse_ltree(const char *buf, struct Node *escontext)
 			case LTPRS_WAITDELIM:
 				if (t_iseq(ptr, '.'))
 				{
-					if (!finish_nodeitem(lptr, ptr, false, pos, escontext))
-						return NULL;
+					finish_nodeitem(lptr, ptr, false, pos);
 					totallen += MAXALIGN(lptr->len + LEVEL_HDRSIZE);
 					lptr++;
 					state = LTPRS_WAITNAME;
 				}
-				else if (!ISLABEL(ptr))
+				else if (!ISALNUM(ptr))
 					UNCHAR;
 				break;
 			default:
@@ -107,13 +105,12 @@ parse_ltree(const char *buf, struct Node *escontext)
 
 	if (state == LTPRS_WAITDELIM)
 	{
-		if (!finish_nodeitem(lptr, ptr, false, pos, escontext))
-			return NULL;
+		finish_nodeitem(lptr, ptr, false, pos);
 		totallen += MAXALIGN(lptr->len + LEVEL_HDRSIZE);
 		lptr++;
 	}
 	else if (!(state == LTPRS_WAITNAME && lptr == list))
-		ereturn(escontext, NULL,
+		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("ltree syntax error"),
 				 errdetail("Unexpected end of input.")));
@@ -175,12 +172,8 @@ Datum
 ltree_in(PG_FUNCTION_ARGS)
 {
 	char	   *buf = (char *) PG_GETARG_POINTER(0);
-	ltree      *res;
 
-	if ((res = parse_ltree(buf, fcinfo->context)) == NULL)
-		PG_RETURN_NULL();
-
-	PG_RETURN_POINTER(res);
+	PG_RETURN_POINTER(parse_ltree(buf));
 }
 
 PG_FUNCTION_INFO_V1(ltree_out);
@@ -239,7 +232,7 @@ ltree_recv(PG_FUNCTION_ARGS)
 		elog(ERROR, "unsupported ltree version number %d", version);
 
 	str = pq_getmsgtext(buf, buf->len - buf->cursor, &nbytes);
-	res = parse_ltree(str, NULL);
+	res = parse_ltree(str);
 	pfree(str);
 
 	PG_RETURN_POINTER(res);
@@ -266,7 +259,7 @@ ltree_recv(PG_FUNCTION_ARGS)
  * returns an lquery
  */
 static lquery *
-parse_lquery(const char *buf, struct Node *escontext)
+parse_lquery(const char *buf)
 {
 	const char *ptr;
 	int			num = 0,
@@ -284,7 +277,7 @@ parse_lquery(const char *buf, struct Node *escontext)
 	int			charlen;
 	int			pos = 1;		/* character position for error messages */
 
-#define UNCHAR ereturn(escontext, NULL,\
+#define UNCHAR ereport(ERROR, \
 					   errcode(ERRCODE_SYNTAX_ERROR), \
 					   errmsg("lquery syntax error at character %d", \
 							  pos))
@@ -304,7 +297,7 @@ parse_lquery(const char *buf, struct Node *escontext)
 
 	num++;
 	if (num > LQUERY_MAX_LEVELS)
-		ereturn(escontext, NULL,
+		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("number of lquery items (%d) exceeds the maximum allowed (%d)",
 						num, LQUERY_MAX_LEVELS)));
@@ -317,7 +310,7 @@ parse_lquery(const char *buf, struct Node *escontext)
 		switch (state)
 		{
 			case LQPRS_WAITLEVEL:
-				if (ISLABEL(ptr))
+				if (ISALNUM(ptr))
 				{
 					GETVAR(curqlevel) = lptr = (nodeitem *) palloc0(sizeof(nodeitem) * (numOR + 1));
 					lptr->start = ptr;
@@ -340,7 +333,7 @@ parse_lquery(const char *buf, struct Node *escontext)
 					UNCHAR;
 				break;
 			case LQPRS_WAITVAR:
-				if (ISLABEL(ptr))
+				if (ISALNUM(ptr))
 				{
 					lptr++;
 					lptr->start = ptr;
@@ -368,25 +361,22 @@ parse_lquery(const char *buf, struct Node *escontext)
 				}
 				else if (t_iseq(ptr, '|'))
 				{
-					if (!finish_nodeitem(lptr, ptr, true, pos, escontext))
-						return NULL;
+					finish_nodeitem(lptr, ptr, true, pos);
 					state = LQPRS_WAITVAR;
 				}
 				else if (t_iseq(ptr, '{'))
 				{
-					if (!finish_nodeitem(lptr, ptr, true, pos, escontext))
-						return NULL;
+					finish_nodeitem(lptr, ptr, true, pos);
 					curqlevel->flag |= LQL_COUNT;
 					state = LQPRS_WAITFNUM;
 				}
 				else if (t_iseq(ptr, '.'))
 				{
-					if (!finish_nodeitem(lptr, ptr, true, pos, escontext))
-						return NULL;
+					finish_nodeitem(lptr, ptr, true, pos);
 					state = LQPRS_WAITLEVEL;
 					curqlevel = NEXTLEV(curqlevel);
 				}
-				else if (ISLABEL(ptr))
+				else if (ISALNUM(ptr))
 				{
 					/* disallow more chars after a flag */
 					if (lptr->flag)
@@ -417,7 +407,7 @@ parse_lquery(const char *buf, struct Node *escontext)
 					int			low = atoi(ptr);
 
 					if (low < 0 || low > LTREE_MAX_LEVELS)
-						ereturn(escontext, NULL,
+						ereport(ERROR,
 								(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 								 errmsg("lquery syntax error"),
 								 errdetail("Low limit (%d) exceeds the maximum allowed (%d), at character %d.",
@@ -435,13 +425,13 @@ parse_lquery(const char *buf, struct Node *escontext)
 					int			high = atoi(ptr);
 
 					if (high < 0 || high > LTREE_MAX_LEVELS)
-						ereturn(escontext, NULL,
+						ereport(ERROR,
 								(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 								 errmsg("lquery syntax error"),
 								 errdetail("High limit (%d) exceeds the maximum allowed (%d), at character %d.",
 										   high, LTREE_MAX_LEVELS, pos)));
 					else if (curqlevel->low > high)
-						ereturn(escontext, NULL,
+						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("lquery syntax error"),
 								 errdetail("Low limit (%d) is greater than high limit (%d), at character %d.",
@@ -495,14 +485,11 @@ parse_lquery(const char *buf, struct Node *escontext)
 	}
 
 	if (state == LQPRS_WAITDELIM)
-	{
-		if (!finish_nodeitem(lptr, ptr, true, pos, escontext))
-			return NULL;
-	}
+		finish_nodeitem(lptr, ptr, true, pos);
 	else if (state == LQPRS_WAITOPEN)
 		curqlevel->high = LTREE_MAX_LEVELS;
 	else if (state != LQPRS_WAITEND)
-		ereturn(escontext, NULL,
+		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("lquery syntax error"),
 				 errdetail("Unexpected end of input.")));
@@ -582,9 +569,8 @@ parse_lquery(const char *buf, struct Node *escontext)
  * Close out parsing an ltree or lquery nodeitem:
  * compute the correct length, and complain if it's not OK
  */
-static bool
-finish_nodeitem(nodeitem *lptr, const char *ptr, bool is_lquery, int pos,
-	struct Node *escontext)
+static void
+finish_nodeitem(nodeitem *lptr, const char *ptr, bool is_lquery, int pos)
 {
 	if (is_lquery)
 	{
@@ -605,19 +591,18 @@ finish_nodeitem(nodeitem *lptr, const char *ptr, bool is_lquery, int pos,
 
 	/* Complain if it's empty or too long */
 	if (lptr->len == 0)
-		ereturn(escontext, false,
+		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 is_lquery ?
 				 errmsg("lquery syntax error at character %d", pos) :
 				 errmsg("ltree syntax error at character %d", pos),
 				 errdetail("Empty labels are not allowed.")));
 	if (lptr->wlen > LTREE_LABEL_MAX_CHARS)
-		ereturn(escontext, false,
+		ereport(ERROR,
 				(errcode(ERRCODE_NAME_TOO_LONG),
 				 errmsg("label string is too long"),
 				 errdetail("Label length is %d, must be at most %d, at character %d.",
 						   lptr->wlen, LTREE_LABEL_MAX_CHARS, pos)));
-	return true;
 }
 
 /*
@@ -745,12 +730,8 @@ Datum
 lquery_in(PG_FUNCTION_ARGS)
 {
 	char	   *buf = (char *) PG_GETARG_POINTER(0);
-	lquery     *res;
 
-	if ((res = parse_lquery(buf, fcinfo->context)) == NULL)
-		PG_RETURN_NULL();
-
-	PG_RETURN_POINTER(res);
+	PG_RETURN_POINTER(parse_lquery(buf));
 }
 
 PG_FUNCTION_INFO_V1(lquery_out);
@@ -809,7 +790,7 @@ lquery_recv(PG_FUNCTION_ARGS)
 		elog(ERROR, "unsupported lquery version number %d", version);
 
 	str = pq_getmsgtext(buf, buf->len - buf->cursor, &nbytes);
-	res = parse_lquery(str, NULL);
+	res = parse_lquery(str);
 	pfree(str);
 
 	PG_RETURN_POINTER(res);

@@ -878,7 +878,7 @@ PQsslKeyPassHook_OpenSSL_type PQgetSSLKeyPassHook_OpenSSL(void);
     as further described below.
    </para>
 
-   <sect3 id="libpq-connstring-keyword-value">
+   <sect3>
     <title>Keyword/Value Connection Strings</title>
 
    <para>
@@ -906,7 +906,7 @@ host=localhost port=5432 dbname=mydb connect_timeout=10
    </para>
    </sect3>
 
-   <sect3 id="libpq-connstring-uris">
+   <sect3>
     <title>Connection URIs</title>
 
    <para>
@@ -1070,8 +1070,9 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
         specified, or is empty, is to connect to a Unix-domain
         socket<indexterm><primary>Unix domain socket</primary></indexterm> in
         <filename>/tmp</filename> (or whatever socket directory was specified
-        when <productname>PostgreSQL</productname> was built).  On Windows,
-        the default is to connect to <literal>localhost</literal>.
+        when <productname>PostgreSQL</productname> was built).  On Windows and
+        on machines without Unix-domain sockets, the default is to connect to
+        <literal>localhost</literal>.
        </para>
        <para>
         A comma-separated list of host names is also accepted, in which case
@@ -1151,8 +1152,8 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
        <para>
         Without either a host name or host address,
         <application>libpq</application> will connect using a local
-        Unix-domain socket; or on Windows, it will attempt to connect to
-        <literal>localhost</literal>.
+        Unix-domain socket; or on Windows and on machines without Unix-domain
+        sockets, it will attempt to connect to <literal>localhost</literal>.
        </para>
        </listitem>
       </varlistentry>
@@ -1216,101 +1217,6 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
        Defaults to <filename>~/.pgpass</filename>, or
        <filename>%APPDATA%\postgresql\pgpass.conf</filename> on Microsoft Windows.
        (No error is reported if this file does not exist.)
-      </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry id="libpq-connect-require-auth" xreflabel="require_auth">
-      <term><literal>require_auth</literal></term>
-      <listitem>
-      <para>
-        Specifies the authentication method that the client requires from the
-        server. If the server does not use the required method to authenticate
-        the client, or if the authentication handshake is not fully completed by
-        the server, the connection will fail. A comma-separated list of methods
-        may also be provided, of which the server must use exactly one in order
-        for the connection to succeed. By default, any authentication method is
-        accepted, and the server is free to skip authentication altogether.
-      </para>
-      <para>
-        Methods may be negated with the addition of a <literal>!</literal>
-        prefix, in which case the server must <emphasis>not</emphasis> attempt
-        the listed method; any other method is accepted, and the server is free
-        not to authenticate the client at all. If a comma-separated list is
-        provided, the server may not attempt <emphasis>any</emphasis> of the
-        listed negated methods. Negated and non-negated forms may not be
-        combined in the same setting.
-      </para>
-      <para>
-        As a final special case, the <literal>none</literal> method requires the
-        server not to use an authentication challenge. (It may also be negated,
-        to require some form of authentication.)
-      </para>
-      <para>
-        The following methods may be specified:
-
-        <variablelist>
-         <varlistentry>
-          <term><literal>password</literal></term>
-          <listitem>
-           <para>
-            The server must request plaintext password authentication.
-           </para>
-          </listitem>
-         </varlistentry>
-
-         <varlistentry>
-          <term><literal>md5</literal></term>
-          <listitem>
-           <para>
-            The server must request MD5 hashed password authentication.
-           </para>
-          </listitem>
-         </varlistentry>
-
-         <varlistentry>
-          <term><literal>gss</literal></term>
-          <listitem>
-           <para>
-            The server must either request a Kerberos handshake via
-            <acronym>GSSAPI</acronym> or establish a
-            <acronym>GSS</acronym>-encrypted channel (see also
-            <xref linkend="libpq-connect-gssencmode" />).
-           </para>
-          </listitem>
-         </varlistentry>
-
-         <varlistentry>
-          <term><literal>sspi</literal></term>
-          <listitem>
-           <para>
-            The server must request Windows <acronym>SSPI</acronym>
-            authentication.
-           </para>
-          </listitem>
-         </varlistentry>
-
-         <varlistentry>
-          <term><literal>scram-sha-256</literal></term>
-          <listitem>
-           <para>
-            The server must successfully complete a SCRAM-SHA-256 authentication
-            exchange with the client.
-           </para>
-          </listitem>
-         </varlistentry>
-
-         <varlistentry>
-          <term><literal>none</literal></term>
-          <listitem>
-           <para>
-            The server must not prompt the client for an authentication
-            exchange. (This does not prohibit client certificate authentication
-            via TLS, nor GSS authentication via its encrypted transport.)
-           </para>
-          </listitem>
-         </varlistentry>
-        </variablelist>
       </para>
       </listitem>
      </varlistentry>
@@ -1810,62 +1716,6 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
       </listitem>
      </varlistentry>
 
-     <varlistentry id="libpq-connect-sslcertmode" xreflabel="sslcertmode">
-      <term><literal>sslcertmode</literal></term>
-      <listitem>
-       <para>
-        This option determines whether a client certificate may be sent to the
-        server, and whether the server is required to request one. There are
-        three modes:
-
-        <variablelist>
-         <varlistentry>
-          <term><literal>disable</literal></term>
-          <listitem>
-           <para>
-            A client certificate is never sent, even if one is available
-            (default location or provided via
-            <xref linkend="libpq-connect-sslcert" />).
-           </para>
-          </listitem>
-         </varlistentry>
-
-         <varlistentry>
-          <term><literal>allow</literal> (default)</term>
-          <listitem>
-           <para>
-            A certificate may be sent, if the server requests one and the
-            client has one to send.
-           </para>
-          </listitem>
-         </varlistentry>
-
-         <varlistentry>
-          <term><literal>require</literal></term>
-          <listitem>
-           <para>
-            The server <emphasis>must</emphasis> request a certificate. The
-            connection will fail if the client does not send a certificate and
-            the server successfully authenticates the client anyway.
-           </para>
-          </listitem>
-         </varlistentry>
-        </variablelist>
-       </para>
-
-       <note>
-        <para>
-         <literal>sslcertmode=require</literal> doesn't add any additional
-         security, since there is no guarantee that the server is validating
-         the certificate correctly; PostgreSQL servers generally request TLS
-         certificates from clients whether they validate them or not. The
-         option may be useful when troubleshooting more complicated TLS
-         setups.
-        </para>
-       </note>
-      </listitem>
-     </varlistentry>
-
      <varlistentry id="libpq-connect-sslrootcert" xreflabel="sslrootcert">
       <term><literal>sslrootcert</literal></term>
       <listitem>
@@ -1887,8 +1737,8 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
         revocation list (CRL).  Certificates listed in this file, if it
         exists, will be rejected while attempting to authenticate the
         server's certificate.  If neither
-        <xref linkend="libpq-connect-sslcrl"/> nor
-        <xref linkend="libpq-connect-sslcrldir"/> is set, this setting is
+        <xref linkend='libpq-connect-sslcrl'/> nor
+        <xref linkend='libpq-connect-sslcrldir'/> is set, this setting is
         taken as
         <filename>~/.postgresql/root.crl</filename>.
        </para>
@@ -2108,67 +1958,6 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
             first try to find a standby server, but if none of the listed
             hosts is a standby server, try again in <literal>any</literal>
             mode
-           </para>
-          </listitem>
-         </varlistentry>
-        </variablelist>
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry id="libpq-connect-load-balance-hosts" xreflabel="load_balance_hosts">
-      <term><literal>load_balance_hosts</literal></term>
-      <listitem>
-       <para>
-        Controls the order in which the client tries to connect to the available
-        hosts and addresses. Once a connection attempt is successful no other
-        hosts and addresses will be tried. This parameter is typically used in
-        combination with multiple host names or a DNS record that returns
-        multiple IPs. This parameter can be used in combination with
-        <xref linkend="libpq-connect-target-session-attrs"/>
-        to, for example, load balance over standby servers only. Once successfully
-        connected, subsequent queries on the returned connection will all be
-        sent to the same server. There are currently two modes:
-        <variablelist>
-         <varlistentry>
-          <term><literal>disable</literal> (default)</term>
-          <listitem>
-           <para>
-            No load balancing across hosts is performed.  Hosts are tried in
-            the order in which they are provided and addresses are tried in
-            the order they are received from DNS or a hosts file.
-           </para>
-          </listitem>
-         </varlistentry>
-
-         <varlistentry>
-          <term><literal>random</literal></term>
-          <listitem>
-           <para>
-            Hosts and addresses are tried in random order. This value is mostly
-            useful when opening multiple connections at the same time, possibly
-            from different machines. This way connections can be load balanced
-            across multiple <productname>PostgreSQL</productname> servers.
-           </para>
-           <para>
-            While random load balancing, due to its random nature, will almost
-            never result in a completely uniform distribution, it statistically
-            gets quite close. One important aspect here is that this algorithm
-            uses two levels of random choices: First the hosts
-            will be resolved in random order. Then secondly, before resolving
-            the next host, all resolved addresses for the current host will be
-            tried in random order. This behaviour can skew the amount of
-            connections each node gets greatly in certain cases, for instance
-            when some hosts resolve to more addresses than others. But such a
-            skew can also be used on purpose, e.g. to increase the number of
-            connections a larger server gets by providing its hostname multiple
-            times in the host string.
-           </para>
-           <para>
-            When using this value it's recommended to also configure a reasonable
-            value for <xref linkend="libpq-connect-connect-timeout"/>. Because then,
-            if one of the nodes that are used for load balancing is not responding,
-            a new node will be tried.
            </para>
           </listitem>
          </varlistentry>
@@ -2802,21 +2591,11 @@ const char *PQsslAttribute(const PGconn *conn, const char *attribute_name);
      <term><function>PQsslAttributeNames</function><indexterm><primary>PQsslAttributeNames</primary></indexterm></term>
      <listitem>
       <para>
-       Returns an array of SSL attribute names that can be used
-       in <function>PQsslAttribute()</function>.
+       Returns an array of SSL attribute names available.
        The array is terminated by a NULL pointer.
 <synopsis>
 const char * const * PQsslAttributeNames(const PGconn *conn);
 </synopsis>
-      </para>
-
-      <para>
-       If <literal>conn</literal> is NULL, the attributes available for the
-       default SSL library are returned, or an empty list
-       if <application>libpq</application> was compiled without any SSL
-       support.  If <literal>conn</literal> is not NULL, the attributes
-       available for the SSL library in use for the connection are returned,
-       or an empty list if the connection is not encrypted.
       </para>
      </listitem>
     </varlistentry>
@@ -3846,9 +3625,6 @@ char *PQresultErrorField(const PGresult *res, int fieldcode);
 <synopsis>
 void PQclear(PGresult *res);
 </synopsis>
-
-        If the argument is a <symbol>NULL</symbol> pointer, no operation is
-        performed.
        </para>
 
        <para>
@@ -4245,7 +4021,7 @@ int PQnparams(const PGresult *res);
 
       <para>
        This function is only useful when inspecting the result of
-       <xref linkend="libpq-PQdescribePrepared"/>.  For other types of results it
+       <xref linkend="libpq-PQdescribePrepared"/>.  For other types of queries it
        will return zero.
       </para>
      </listitem>
@@ -4265,7 +4041,7 @@ Oid PQparamtype(const PGresult *res, int param_number);
 
       <para>
        This function is only useful when inspecting the result of
-       <xref linkend="libpq-PQdescribePrepared"/>.  For other types of results it
+       <xref linkend="libpq-PQdescribePrepared"/>.  For other types of queries it
        will return zero.
       </para>
      </listitem>
@@ -6893,8 +6669,6 @@ void PQfreemem(void *ptr);
 <synopsis>
 void PQconninfoFree(PQconninfoOption *connOptions);
 </synopsis>
-      If the argument is a <symbol>NULL</symbol> pointer, no operation is
-      performed.
      </para>
 
      <para>
@@ -7989,16 +7763,6 @@ myEventProc(PGEventId evtId, void *evtInfo, void *passThrough)
     <listitem>
      <para>
       <indexterm>
-       <primary><envar>PGREQUIREAUTH</envar></primary>
-      </indexterm>
-      <envar>PGREQUIREAUTH</envar> behaves the same as the <xref
-      linkend="libpq-connect-require-auth"/> connection parameter.
-     </para>
-    </listitem>
-
-    <listitem>
-     <para>
-      <indexterm>
        <primary><envar>PGCHANNELBINDING</envar></primary>
       </indexterm>
       <envar>PGCHANNELBINDING</envar> behaves the same as the <xref
@@ -8100,16 +7864,6 @@ myEventProc(PGEventId evtId, void *evtInfo, void *passThrough)
       </indexterm>
       <envar>PGSSLKEY</envar> behaves the same as the <xref
       linkend="libpq-connect-sslkey"/> connection parameter.
-     </para>
-    </listitem>
-
-    <listitem>
-     <para>
-      <indexterm>
-       <primary><envar>PGSSLCERTMODE</envar></primary>
-      </indexterm>
-      <envar>PGSSLCERTMODE</envar> behaves the same as the <xref
-      linkend="libpq-connect-sslcertmode"/> connection parameter.
      </para>
     </listitem>
 
@@ -9451,9 +9205,11 @@ main(int argc, char **argv)
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#ifdef HAVE_SYS_SELECT_H
+#include <sys/select.h>
+#endif
 
 #include "libpq-fe.h"
 

@@ -1,11 +1,11 @@
 
-# Copyright (c) 2021-2023, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Sets up a KDC and then runs a variety of tests to make sure that the
 # GSSAPI/Kerberos authentication and encryption are working properly,
 # that the options in pg_hba.conf and pg_ident.conf are handled correctly,
-# that the server-side pg_stat_gssapi view reports what we expect to
-# see for each test and that SYSTEM_USER returns what we expect to see.
+# and that the server-side pg_stat_gssapi view reports what we expect to
+# see for each test.
 #
 # Since this requires setting up a full KDC, it doesn't make much sense
 # to have multiple test scripts (since they'd have to also create their
@@ -24,10 +24,6 @@ use Time::HiRes qw(usleep);
 if ($ENV{with_gssapi} ne 'yes')
 {
 	plan skip_all => 'GSSAPI/Kerberos not supported by this build';
-}
-elsif ($ENV{PG_TEST_EXTRA} !~ /\bkerberos\b/)
-{
-	plan skip_all => 'Potentially unsafe test GSSAPI/Kerberos not enabled in PG_TEST_EXTRA';
 }
 
 my ($krb5_bin_dir, $krb5_sbin_dir);
@@ -100,17 +96,6 @@ $stdout =~ m/Kerberos 5 release ([0-9]+\.[0-9]+)/
   or BAIL_OUT("could not get Kerberos version");
 $krb5_version = $1;
 
-# Build the krb5.conf to use.
-#
-# Explicitly specify the default (test) realm and the KDC for
-# that realm to avoid the Kerberos library trying to look up
-# that information in DNS, and also because we're using a
-# non-standard KDC port.
-#
-# Reverse DNS is explicitly disabled to avoid any issue with a
-# captive portal or other cases where the reverse DNS succeeds
-# and the Kerberos library uses that as the canonical name of
-# the host and then tries to acquire a cross-realm ticket.
 append_to_file(
 	$krb5_conf,
 	qq![logging]
@@ -119,7 +104,6 @@ kdc = FILE:$kdc_log
 
 [libdefaults]
 default_realm = $realm
-rdns = false
 
 [realms]
 $realm = {
@@ -198,13 +182,6 @@ lc_messages = 'C'
 $node->start;
 
 $node->safe_psql('postgres', 'CREATE USER test1;');
-
-# Set up a table for SYSTEM_USER parallel worker testing.
-$node->safe_psql('postgres',
-	"CREATE TABLE ids (id) AS SELECT 'gss:test1\@$realm' FROM generate_series(1, 10);"
-);
-
-$node->safe_psql('postgres', 'GRANT SELECT ON ids TO public;');
 
 note "running tests";
 
@@ -337,49 +314,6 @@ test_query(
 	'gssencmode=require',
 	'sending 100K lines works');
 
-# require_auth=gss succeeds if required.
-$node->connect_ok(
-	$node->connstr('postgres')
-	  . " user=test1 host=$host hostaddr=$hostaddr gssencmode=disable require_auth=gss",
-	"GSS authentication requested, works with non-encyrpted GSS");
-$node->connect_ok(
-	$node->connstr('postgres')
-	  . " user=test1 host=$host hostaddr=$hostaddr gssencmode=require require_auth=gss",
-	"GSS authentication requested, works with encrypted GSS auth");
-
-# require_auth=sspi fails if required.
-$node->connect_fails(
-	$node->connstr('postgres')
-	  . " user=test1 host=$host hostaddr=$hostaddr gssencmode=disable require_auth=sspi",
-	"SSPI authentication requested, fails with non-encrypted GSS",
-	expected_stderr =>
-	  qr/auth method "sspi" requirement failed: server requested GSSAPI authentication/
-);
-$node->connect_fails(
-	$node->connstr('postgres')
-	  . " user=test1 host=$host hostaddr=$hostaddr gssencmode=require require_auth=sspi",
-	"SSPI authentication requested, fails with encrypted GSS",
-	expected_stderr =>
-	  qr/auth method "sspi" requirement failed: server did not complete authentication/
-);
-
-# Test that SYSTEM_USER works.
-test_query($node, 'test1', 'SELECT SYSTEM_USER;',
-	qr/^gss:test1\@$realm$/s, 'gssencmode=require', 'testing system_user');
-
-# Test that SYSTEM_USER works with parallel workers.
-test_query(
-	$node,
-	'test1', qq(
-	SET min_parallel_table_scan_size TO 0;
-	SET parallel_setup_cost TO 0;
-	SET parallel_tuple_cost TO 0;
-	SET max_parallel_workers_per_gather TO 2;
-	SELECT bool_and(SYSTEM_USER = id) FROM ids;),
-	qr/^t$/s,
-	'gssencmode=require',
-	'testing system_user with parallel workers');
-
 unlink($node->data_dir . '/pg_hba.conf');
 $node->append_conf('pg_hba.conf',
 	qq{hostgssenc all all $hostaddr/32 gss map=mymap});
@@ -407,16 +341,6 @@ test_access(
 );
 test_access($node, 'test1', 'SELECT true', 2, 'gssencmode=disable',
 	'fails with GSS encryption disabled and hostgssenc hba');
-
-# require_auth=gss succeeds if required.
-$node->connect_ok(
-	$node->connstr('postgres')
-	  . " user=test1 host=$host hostaddr=$hostaddr gssencmode=require require_auth=gss",
-	"GSS authentication requested, works with GSS encryption");
-$node->connect_ok(
-	$node->connstr('postgres')
-	  . " user=test1 host=$host hostaddr=$hostaddr gssencmode=require require_auth=gss,scram-sha-256",
-	"multiple authentication types requested, works with GSS encryption");
 
 unlink($node->data_dir . '/pg_hba.conf');
 $node->append_conf('pg_hba.conf',

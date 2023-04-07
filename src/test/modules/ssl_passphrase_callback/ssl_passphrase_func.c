@@ -20,6 +20,8 @@
 
 PG_MODULE_MAGIC;
 
+void		_PG_init(void);
+
 static char *ssl_passphrase = NULL;
 
 /* callback function */

@@ -795,16 +795,15 @@ SELECT * FROM FKTABLE ORDER BY id;
 
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
--- Test some invalid FK definitions
-CREATE TABLE PKTABLE (ptest1 int PRIMARY KEY, someoid oid);
+CREATE TABLE PKTABLE (ptest1 int PRIMARY KEY);
 CREATE TABLE FKTABLE_FAIL1 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest2) REFERENCES PKTABLE);
 ERROR:  column "ftest2" referenced in foreign key constraint does not exist
 CREATE TABLE FKTABLE_FAIL2 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest1) REFERENCES PKTABLE(ptest2));
 ERROR:  column "ptest2" referenced in foreign key constraint does not exist
-CREATE TABLE FKTABLE_FAIL3 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (tableoid) REFERENCES PKTABLE(someoid));
-ERROR:  system columns cannot be used in foreign keys
-CREATE TABLE FKTABLE_FAIL4 ( ftest1 oid, CONSTRAINT fkfail1 FOREIGN KEY (ftest1) REFERENCES PKTABLE(tableoid));
-ERROR:  system columns cannot be used in foreign keys
+DROP TABLE FKTABLE_FAIL1;
+ERROR:  table "fktable_fail1" does not exist
+DROP TABLE FKTABLE_FAIL2;
+ERROR:  table "fktable_fail2" does not exist
 DROP TABLE PKTABLE;
 -- Test for referencing column number smaller than referenced constraint
 CREATE TABLE PKTABLE (ptest1 int, ptest2 int, UNIQUE(ptest1, ptest2));
@@ -2522,7 +2521,7 @@ DELETE FROM pt;
 DELETE FROM ref;
 ABORT;
 DROP TABLE pt, ref;
--- Multi-level partitioning at referenced end
+-- Multi-level partitioning at at referenced end
 CREATE TABLE pt(f1 int, f2 int, f3 int, PRIMARY KEY(f1,f2))
   PARTITION BY LIST(f1);
 CREATE TABLE pt1_2 PARTITION OF pt FOR VALUES IN (1, 2) PARTITION BY LIST (f1);

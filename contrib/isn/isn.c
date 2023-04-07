@@ -4,7 +4,7 @@
  *	  PostgreSQL type definitions for ISNs (ISBN, ISMN, ISSN, EAN13, UPC)
  *
  * Author:	German Mendez Bravo (Kronuz)
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/isn/isn.c
@@ -675,14 +675,14 @@ eantoobig:
 /*
  * string2ean --- try to parse a string into an ean13.
  *
- * ereturn false with a useful error message if the string is bad.
- * Otherwise return true.
+ * If errorOK is false, ereport a useful error message if the string is bad.
+ * If errorOK is true, just return "false" for bad input.
  *
  * if the input string ends with '!' it will always be treated as invalid
  * (even if the check digit is valid)
  */
 static bool
-string2ean(const char *str, struct Node *escontext, ean13 *result,
+string2ean(const char *str, bool errorOK, ean13 *result,
 		   enum isn_type accept)
 {
 	bool		digit,
@@ -876,43 +876,55 @@ eanbadcheck:
 		return true;
 	}
 
-	if (rcheck == (unsigned) -1)
+	if (!errorOK)
 	{
-		ereturn(escontext, false,
-				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-				 errmsg("invalid %s number: \"%s\"",
-						isn_names[accept], str)));
+		if (rcheck == (unsigned) -1)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid %s number: \"%s\"",
+							isn_names[accept], str)));
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid check digit for %s number: \"%s\", should be %c",
+							isn_names[accept], str, (rcheck == 10) ? ('X') : (rcheck + '0'))));
+		}
 	}
-	else
-	{
-		ereturn(escontext, false,
-				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-				 errmsg("invalid check digit for %s number: \"%s\", should be %c",
-						isn_names[accept], str, (rcheck == 10) ? ('X') : (rcheck + '0'))));
-	}
+	return false;
 
 eaninvalid:
-	ereturn(escontext, false,
-			(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-			 errmsg("invalid input syntax for %s number: \"%s\"",
-					isn_names[accept], str)));
+	if (!errorOK)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				 errmsg("invalid input syntax for %s number: \"%s\"",
+						isn_names[accept], str)));
+	return false;
 
 eanwrongtype:
-	ereturn(escontext, false,
-			(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-			 errmsg("cannot cast %s to %s for number: \"%s\"",
-					isn_names[type], isn_names[accept], str)));
+	if (!errorOK)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				 errmsg("cannot cast %s to %s for number: \"%s\"",
+						isn_names[type], isn_names[accept], str)));
+	return false;
 
 eantoobig:
-	ereturn(escontext, false,
-			(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-			 errmsg("value \"%s\" is out of range for %s type",
-					str, isn_names[accept])));
+	if (!errorOK)
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("value \"%s\" is out of range for %s type",
+						str, isn_names[accept])));
+	return false;
 }
 
 /*----------------------------------------------------------
  * Exported routines.
  *---------------------------------------------------------*/
+
+void		_PG_init(void);
 
 void
 _PG_init(void)
@@ -973,8 +985,7 @@ ean13_in(PG_FUNCTION_ARGS)
 	const char *str = PG_GETARG_CSTRING(0);
 	ean13		result;
 
-	if (!string2ean(str, fcinfo->context, &result, EAN13))
-		PG_RETURN_NULL();
+	(void) string2ean(str, false, &result, EAN13);
 	PG_RETURN_EAN13(result);
 }
 
@@ -987,8 +998,7 @@ isbn_in(PG_FUNCTION_ARGS)
 	const char *str = PG_GETARG_CSTRING(0);
 	ean13		result;
 
-	if (!string2ean(str, fcinfo->context, &result, ISBN))
-		PG_RETURN_NULL();
+	(void) string2ean(str, false, &result, ISBN);
 	PG_RETURN_EAN13(result);
 }
 
@@ -1001,8 +1011,7 @@ ismn_in(PG_FUNCTION_ARGS)
 	const char *str = PG_GETARG_CSTRING(0);
 	ean13		result;
 
-	if (!string2ean(str, fcinfo->context, &result, ISMN))
-		PG_RETURN_NULL();
+	(void) string2ean(str, false, &result, ISMN);
 	PG_RETURN_EAN13(result);
 }
 
@@ -1015,8 +1024,7 @@ issn_in(PG_FUNCTION_ARGS)
 	const char *str = PG_GETARG_CSTRING(0);
 	ean13		result;
 
-	if (!string2ean(str, fcinfo->context, &result, ISSN))
-		PG_RETURN_NULL();
+	(void) string2ean(str, false, &result, ISSN);
 	PG_RETURN_EAN13(result);
 }
 
@@ -1029,8 +1037,7 @@ upc_in(PG_FUNCTION_ARGS)
 	const char *str = PG_GETARG_CSTRING(0);
 	ean13		result;
 
-	if (!string2ean(str, fcinfo->context, &result, UPC))
-		PG_RETURN_NULL();
+	(void) string2ean(str, false, &result, UPC);
 	PG_RETURN_EAN13(result);
 }
 

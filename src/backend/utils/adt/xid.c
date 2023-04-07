@@ -3,7 +3,7 @@
  * xid.c
  *	  POSTGRES transaction identifier and command identifier datatypes.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -31,10 +31,8 @@ Datum
 xidin(PG_FUNCTION_ARGS)
 {
 	char	   *str = PG_GETARG_CSTRING(0);
-	TransactionId result;
 
-	result = uint32in_subr(str, NULL, "xid", fcinfo->context);
-	PG_RETURN_TRANSACTIONID(result);
+	PG_RETURN_TRANSACTIONID((TransactionId) strtoul(str, NULL, 0));
 }
 
 Datum
@@ -185,10 +183,8 @@ Datum
 xid8in(PG_FUNCTION_ARGS)
 {
 	char	   *str = PG_GETARG_CSTRING(0);
-	uint64		result;
 
-	result = uint64in_subr(str, NULL, "xid8", fcinfo->context);
-	PG_RETURN_FULLTRANSACTIONID(FullTransactionIdFromU64(result));
+	PG_RETURN_FULLTRANSACTIONID(FullTransactionIdFromU64(strtou64(str, NULL, 0)));
 }
 
 Datum
@@ -325,10 +321,8 @@ Datum
 cidin(PG_FUNCTION_ARGS)
 {
 	char	   *str = PG_GETARG_CSTRING(0);
-	CommandId	result;
 
-	result = uint32in_subr(str, NULL, "cid", fcinfo->context);
-	PG_RETURN_COMMANDID(result);
+	PG_RETURN_COMMANDID((CommandId) strtoul(str, NULL, 0));
 }
 
 /*

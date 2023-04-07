@@ -6,7 +6,7 @@
  *
  * Transforms tokenized jsonpath into tree of JsonPathParseItem structs.
  *
- * Copyright (c) 2019-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2019-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	src/backend/utils/adt/jsonpath_gram.y
@@ -18,11 +18,26 @@
 
 #include "catalog/pg_collation.h"
 #include "fmgr.h"
-#include "jsonpath_internal.h"
 #include "miscadmin.h"
 #include "nodes/pg_list.h"
 #include "regex/regex.h"
 #include "utils/builtins.h"
+#include "utils/jsonpath.h"
+
+/* struct JsonPathString is shared between scan and gram */
+typedef struct JsonPathString
+{
+	char	   *val;
+	int			len;
+	int			total;
+}			JsonPathString;
+
+union YYSTYPE;
+
+/* flex 2.5.4 doesn't bother with a decl for this */
+int	jsonpath_yylex(union YYSTYPE *yylval_param);
+int	jsonpath_yyparse(JsonPathParseResult **result);
+void jsonpath_yyerror(JsonPathParseResult **result, const char *message);
 
 static JsonPathParseItem *makeItemType(JsonPathItemType type);
 static JsonPathParseItem *makeItemString(JsonPathString *s);
@@ -38,16 +53,17 @@ static JsonPathParseItem *makeItemUnary(JsonPathItemType type,
 static JsonPathParseItem *makeItemList(List *list);
 static JsonPathParseItem *makeIndexArray(List *list);
 static JsonPathParseItem *makeAny(int first, int last);
-static bool makeItemLikeRegex(JsonPathParseItem *expr,
-							  JsonPathString *pattern,
-							  JsonPathString *flags,
-							  JsonPathParseItem ** result,
-							  struct Node *escontext);
+static JsonPathParseItem *makeItemLikeRegex(JsonPathParseItem *expr,
+											JsonPathString *pattern,
+											JsonPathString *flags);
 
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,
  * so we can easily have it use palloc instead of malloc.  This prevents
- * memory leaks if we error out during parsing.
+ * memory leaks if we error out during parsing.  Note this only works with
+ * bison >= 2.0.  However, in bison 1.875 the default is to use alloca()
+ * if possible, so there's not really much problem anyhow, at least if
+ * you're building with gcc.
  */
 #define YYMALLOC palloc
 #define YYFREE   pfree
@@ -59,9 +75,6 @@ static bool makeItemLikeRegex(JsonPathParseItem *expr,
 %expect 0
 %name-prefix="jsonpath_yy"
 %parse-param {JsonPathParseResult **result}
-%parse-param {struct Node *escontext}
-%lex-param {JsonPathParseResult **result}
-%lex-param {struct Node *escontext}
 
 %union
 {
@@ -168,20 +181,9 @@ predicate:
 									{ $$ = makeItemUnary(jpiIsUnknown, $2); }
 	| expr STARTS_P WITH_P starts_with_initial
 									{ $$ = makeItemBinary(jpiStartsWith, $1, $4); }
-	| expr LIKE_REGEX_P STRING_P
-	{
-		JsonPathParseItem *jppitem;
-		if (! makeItemLikeRegex($1, &$3, NULL, &jppitem, escontext))
-			YYABORT;
-		$$ = jppitem;
-	}
+	| expr LIKE_REGEX_P STRING_P	{ $$ = makeItemLikeRegex($1, &$3, NULL); }
 	| expr LIKE_REGEX_P STRING_P FLAG_P STRING_P
-	{
-		JsonPathParseItem *jppitem;
-		if (! makeItemLikeRegex($1, &$3, &$5, &jppitem, escontext))
-			YYABORT;
-		$$ = jppitem;
-	}
+									{ $$ = makeItemLikeRegex($1, &$3, &$5); }
 	;
 
 starts_with_initial:
@@ -458,7 +460,7 @@ makeIndexArray(List *list)
 	ListCell   *cell;
 	int			i = 0;
 
-	Assert(list != NIL);
+	Assert(list_length(list) > 0);
 	v->value.array.nelems = list_length(list);
 
 	v->value.array.elems = palloc(sizeof(v->value.array.elems[0]) *
@@ -488,10 +490,9 @@ makeAny(int first, int last)
 	return v;
 }
 
-static bool
+static JsonPathParseItem *
 makeItemLikeRegex(JsonPathParseItem *expr, JsonPathString *pattern,
-				  JsonPathString *flags, JsonPathParseItem ** result,
-				  struct Node *escontext)
+				  JsonPathString *flags)
 {
 	JsonPathParseItem *v = makeItemType(jpiLikeRegex);
 	int			i;
@@ -523,7 +524,7 @@ makeItemLikeRegex(JsonPathParseItem *expr, JsonPathString *pattern,
 				v->value.like_regex.flags |= JSP_REGEX_QUOTE;
 				break;
 			default:
-				ereturn(escontext, false,
+				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("invalid input syntax for type %s", "jsonpath"),
 						 errdetail("Unrecognized flag character \"%.*s\" in LIKE_REGEX predicate.",
@@ -532,48 +533,22 @@ makeItemLikeRegex(JsonPathParseItem *expr, JsonPathString *pattern,
 		}
 	}
 
-	/* Convert flags to what pg_regcomp needs */
-	if ( !jspConvertRegexFlags(v->value.like_regex.flags, &cflags, escontext))
-		 return false;
+	/* Convert flags to what RE_compile_and_cache needs */
+	cflags = jspConvertRegexFlags(v->value.like_regex.flags);
 
 	/* check regex validity */
-	{
-		regex_t     re_tmp;
-		pg_wchar   *wpattern;
-		int         wpattern_len;
-		int         re_result;
+	(void) RE_compile_and_cache(cstring_to_text_with_len(pattern->val,
+														 pattern->len),
+								cflags, DEFAULT_COLLATION_OID);
 
-		wpattern = (pg_wchar *) palloc((pattern->len + 1) * sizeof(pg_wchar));
-		wpattern_len = pg_mb2wchar_with_len(pattern->val,
-											wpattern,
-											pattern->len);
-
-		if ((re_result = pg_regcomp(&re_tmp, wpattern, wpattern_len, cflags,
-									DEFAULT_COLLATION_OID)) != REG_OKAY)
-		{
-			char        errMsg[100];
-
-			/* See regexp.c for explanation */
-			CHECK_FOR_INTERRUPTS();
-			pg_regerror(re_result, &re_tmp, errMsg, sizeof(errMsg));
-			ereturn(escontext, false,
-					(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
-					 errmsg("invalid regular expression: %s", errMsg)));
-		}
-
-		pg_regfree(&re_tmp);
-	}
-
-	*result = v;
-
-	return true;
+	return v;
 }
 
 /*
  * Convert from XQuery regex flags to those recognized by our regex library.
  */
-bool
-jspConvertRegexFlags(uint32 xflags, int *result, struct Node *escontext)
+int
+jspConvertRegexFlags(uint32 xflags)
 {
 	/* By default, XQuery is very nearly the same as Spencer's AREs */
 	int			cflags = REG_ADVANCED;
@@ -604,12 +579,28 @@ jspConvertRegexFlags(uint32 xflags, int *result, struct Node *escontext)
 		 * XQuery-style ignore-whitespace mode.
 		 */
 		if (xflags & JSP_REGEX_WSPACE)
-			ereturn(escontext, false,
+			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("XQuery \"x\" flag (expanded regular expressions) is not implemented")));
 	}
 
-	*result = cflags;
+	/*
+	 * We'll never need sub-match details at execution.  While
+	 * RE_compile_and_execute would set this flag anyway, force it on here to
+	 * ensure that the regex cache entries created by makeItemLikeRegex are
+	 * useful.
+	 */
+	cflags |= REG_NOSUB;
 
-	return true;
+	return cflags;
 }
+
+/*
+ * jsonpath_scan.l is compiled as part of jsonpath_gram.y.  Currently, this is
+ * unavoidable because jsonpath_gram does not create a .h file to export its
+ * token symbols.  If these files ever grow large enough to be worth compiling
+ * separately, that could be fixed; but for now it seems like useless
+ * complication.
+ */
+
+#include "jsonpath_scan.c"

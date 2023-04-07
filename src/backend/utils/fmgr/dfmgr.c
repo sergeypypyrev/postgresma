@@ -3,7 +3,7 @@
  * dfmgr.c
  *	  Dynamic function manager code.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -16,7 +16,7 @@
 
 #include <sys/stat.h>
 
-#ifndef WIN32
+#ifdef HAVE_DLOPEN
 #include <dlfcn.h>
 
 /*
@@ -28,7 +28,7 @@
 #undef bool
 #endif
 #endif
-#endif							/* !WIN32 */
+#endif							/* HAVE_DLOPEN */
 
 #include "fmgr.h"
 #include "lib/stringinfo.h"
@@ -240,7 +240,7 @@ internal_load_library(const char *libname)
 		if (file_scanner->handle == NULL)
 		{
 			load_error = dlerror();
-			free(file_scanner);
+			free((char *) file_scanner);
 			/* errcode_for_file_access might not be appropriate here? */
 			ereport(ERROR,
 					(errcode_for_file_access(),
@@ -263,7 +263,7 @@ internal_load_library(const char *libname)
 
 				/* try to close library */
 				dlclose(file_scanner->handle);
-				free(file_scanner);
+				free((char *) file_scanner);
 
 				/* issue suitable complaint */
 				incompatible_module_error(libname, &module_magic_data);
@@ -273,7 +273,7 @@ internal_load_library(const char *libname)
 		{
 			/* try to close library */
 			dlclose(file_scanner->handle);
-			free(file_scanner);
+			free((char *) file_scanner);
 			/* complain */
 			ereport(ERROR,
 					(errmsg("incompatible library \"%s\": missing magic block",
@@ -405,7 +405,7 @@ file_exists(const char *name)
 {
 	struct stat st;
 
-	Assert(name != NULL);
+	AssertArg(name != NULL);
 
 	if (stat(name, &st) == 0)
 		return !S_ISDIR(st.st_mode);
@@ -434,7 +434,7 @@ expand_dynamic_library_name(const char *name)
 	char	   *new;
 	char	   *full;
 
-	Assert(name);
+	AssertArg(name);
 
 	have_slash = (first_dir_separator(name) != NULL);
 
@@ -502,7 +502,7 @@ substitute_libpath_macro(const char *name)
 {
 	const char *sep_ptr;
 
-	Assert(name != NULL);
+	AssertArg(name != NULL);
 
 	/* Currently, we only recognize $libdir at the start of the string */
 	if (name[0] != '$')
@@ -534,9 +534,9 @@ find_in_dynamic_libpath(const char *basename)
 	const char *p;
 	size_t		baselen;
 
-	Assert(basename != NULL);
-	Assert(first_dir_separator(basename) == NULL);
-	Assert(Dynamic_library_path != NULL);
+	AssertArg(basename != NULL);
+	AssertArg(first_dir_separator(basename) == NULL);
+	AssertState(Dynamic_library_path != NULL);
 
 	p = Dynamic_library_path;
 	if (strlen(p) == 0)

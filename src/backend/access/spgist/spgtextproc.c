@@ -29,7 +29,7 @@
  * No new entries ever get pushed into a -2-labeled child, either.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -46,7 +46,6 @@
 #include "utils/datum.h"
 #include "utils/pg_locale.h"
 #include "utils/varlena.h"
-#include "varatt.h"
 
 
 /*

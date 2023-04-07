@@ -80,7 +80,9 @@ hstoreArrayToPairs(ArrayType *a, int *npairs)
 	int			i,
 				j;
 
-	deconstruct_array_builtin(a, TEXTOID, &key_datums, &key_nulls, &key_count);
+	deconstruct_array(a,
+					  TEXTOID, -1, false, TYPALIGN_INT,
+					  &key_datums, &key_nulls, &key_count);
 
 	if (key_count == 0)
 	{
@@ -580,7 +582,9 @@ hstore_slice_to_array(PG_FUNCTION_ARGS)
 	int			key_count;
 	int			i;
 
-	deconstruct_array_builtin(key_array, TEXTOID, &key_datums, &key_nulls, &key_count);
+	deconstruct_array(key_array,
+					  TEXTOID, -1, false, TYPALIGN_INT,
+					  &key_datums, &key_nulls, &key_count);
 
 	if (key_count == 0)
 	{
@@ -715,7 +719,8 @@ hstore_akeys(PG_FUNCTION_ARGS)
 		d[i] = PointerGetDatum(t);
 	}
 
-	a = construct_array_builtin(d, count, TEXTOID);
+	a = construct_array(d, count,
+						TEXTOID, -1, false, TYPALIGN_INT);
 
 	PG_RETURN_POINTER(a);
 }
@@ -1064,7 +1069,7 @@ hstore_each(PG_FUNCTION_ARGS)
 		tuple = heap_form_tuple(funcctx->tuple_desc, dvalues, nulls);
 		res = HeapTupleGetDatum(tuple);
 
-		SRF_RETURN_NEXT(funcctx, res);
+		SRF_RETURN_NEXT(funcctx, PointerGetDatum(res));
 	}
 
 	SRF_RETURN_DONE(funcctx);

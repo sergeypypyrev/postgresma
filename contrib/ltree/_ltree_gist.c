@@ -7,15 +7,12 @@
  */
 #include "postgres.h"
 
-#include <math.h>
-
 #include "access/gist.h"
 #include "access/reloptions.h"
 #include "access/stratnum.h"
 #include "crc32.h"
 #include "ltree.h"
 #include "port/pg_bitutils.h"
-#include "utils/array.h"
 
 PG_FUNCTION_INFO_V1(_ltree_compress);
 PG_FUNCTION_INFO_V1(_ltree_same);
@@ -317,9 +314,9 @@ _ltree_picksplit(PG_FUNCTION_ARGS)
 		_j = GETENTRY(entryvec, j);
 		size_alpha = hemdist(datum_l, _j, siglen);
 		size_beta = hemdist(datum_r, _j, siglen);
-		costvector[j - 1].cost = abs(size_alpha - size_beta);
+		costvector[j - 1].cost = Abs(size_alpha - size_beta);
 	}
-	qsort(costvector, maxoff, sizeof(SPLITCOST), comparecost);
+	qsort((void *) costvector, maxoff, sizeof(SPLITCOST), comparecost);
 
 	union_l = LTG_SIGN(datum_l);
 	union_r = LTG_SIGN(datum_r);
@@ -348,7 +345,7 @@ _ltree_picksplit(PG_FUNCTION_ARGS)
 			if (LTG_ISALLTRUE(datum_l) || LTG_ISALLTRUE(_j))
 			{
 				if (!LTG_ISALLTRUE(datum_l))
-					memset(union_l, 0xff, siglen);
+					MemSet((void *) union_l, 0xff, siglen);
 			}
 			else
 			{
@@ -364,7 +361,7 @@ _ltree_picksplit(PG_FUNCTION_ARGS)
 			if (LTG_ISALLTRUE(datum_r) || LTG_ISALLTRUE(_j))
 			{
 				if (!LTG_ISALLTRUE(datum_r))
-					memset(union_r, 0xff, siglen);
+					MemSet((void *) union_r, 0xff, siglen);
 			}
 			else
 			{

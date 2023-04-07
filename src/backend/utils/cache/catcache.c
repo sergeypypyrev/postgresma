@@ -3,7 +3,7 @@
  * catcache.c
  *	  System catalog cache for tuples matching a key.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -19,6 +19,7 @@
 #include "access/relscan.h"
 #include "access/sysattr.h"
 #include "access/table.h"
+#include "access/valid.h"
 #include "access/xact.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_operator.h"
@@ -763,6 +764,7 @@ InitCatCache(int id,
 {
 	CatCache   *cp;
 	MemoryContext oldcxt;
+	size_t		sz;
 	int			i;
 
 	/*
@@ -806,8 +808,8 @@ InitCatCache(int id,
 	 *
 	 * Note: we rely on zeroing to initialize all the dlist headers correctly
 	 */
-	cp = (CatCache *) palloc_aligned(sizeof(CatCache), PG_CACHE_LINE_SIZE,
-									 MCXT_ALLOC_ZERO);
+	sz = sizeof(CatCache) + PG_CACHE_LINE_SIZE;
+	cp = (CatCache *) CACHELINEALIGN(palloc0(sz));
 	cp->cc_bucket = palloc0(nbuckets * sizeof(dlist_head));
 
 	/*

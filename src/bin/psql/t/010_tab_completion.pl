@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2023, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
@@ -68,26 +68,25 @@ delete $ENV{LS_COLORS};
 
 # In a VPATH build, we'll be started in the source directory, but we want
 # to run in the build directory so that we can use relative paths to
-# access the tab_comp_dir subdirectory; otherwise the output from filename
+# access the tmp_check subdirectory; otherwise the output from filename
 # completion tests is too variable.
-if ($ENV{TESTDATADIR})
+if ($ENV{TESTDIR})
 {
-	chdir $ENV{TESTDATADIR} or die "could not chdir to \"$ENV{TESTDATADIR}\": $!";
+	chdir $ENV{TESTDIR} or die "could not chdir to \"$ENV{TESTDIR}\": $!";
 }
 
 # Create some junk files for filename completion testing.
-mkdir "tab_comp_dir";
 my $FH;
-open $FH, ">", "tab_comp_dir/somefile"
-  or die("could not create file \"tab_comp_dir/somefile\": $!");
+open $FH, ">", "tmp_check/somefile"
+  or die("could not create file \"tmp_check/somefile\": $!");
 print $FH "some stuff\n";
 close $FH;
-open $FH, ">", "tab_comp_dir/afile123"
-  or die("could not create file \"tab_comp_dir/afile123\": $!");
+open $FH, ">", "tmp_check/afile123"
+  or die("could not create file \"tmp_check/afile123\": $!");
 print $FH "more stuff\n";
 close $FH;
-open $FH, ">", "tab_comp_dir/afile456"
-  or die("could not create file \"tab_comp_dir/afile456\": $!");
+open $FH, ">", "tmp_check/afile456"
+  or die("could not create file \"tmp_check/afile456\": $!");
 print $FH "other stuff\n";
 close $FH;
 
@@ -273,16 +272,16 @@ clear_query();
 
 # check filename completion
 check_completion(
-	"\\lo_import tab_comp_dir/some\t",
-	qr|tab_comp_dir/somefile |,
+	"\\lo_import tmp_check/some\t",
+	qr|tmp_check/somefile |,
 	"filename completion with one possibility");
 
 clear_query();
 
 # note: readline might print a bell before the completion
 check_completion(
-	"\\lo_import tab_comp_dir/af\t",
-	qr|tab_comp_dir/af\a?ile|,
+	"\\lo_import tmp_check/af\t",
+	qr|tmp_check/af\a?ile|,
 	"filename completion with multiple possibilities");
 
 # broken versions of libedit require clear_line not clear_query here
@@ -292,15 +291,15 @@ clear_line();
 # note: broken versions of libedit want to backslash the closing quote;
 # not much we can do about that
 check_completion(
-	"COPY foo FROM tab_comp_dir/some\t",
-	qr|'tab_comp_dir/somefile\\?' |,
+	"COPY foo FROM tmp_check/some\t",
+	qr|'tmp_check/somefile\\?' |,
 	"quoted filename completion with one possibility");
 
 clear_line();
 
 check_completion(
-	"COPY foo FROM tab_comp_dir/af\t",
-	qr|'tab_comp_dir/afile|,
+	"COPY foo FROM tmp_check/af\t",
+	qr|'tmp_check/afile|,
 	"quoted filename completion with multiple possibilities");
 
 # some versions of readline/libedit require two tabs here, some only need one
@@ -308,7 +307,7 @@ check_completion(
 # the quotes might appear, too
 check_completion(
 	"\t\t",
-	qr|afile123'? +'?(tab_comp_dir/)?afile456|,
+	qr|afile123'? +'?(tmp_check/)?afile456|,
 	"offer multiple file choices");
 
 clear_line();
@@ -441,14 +440,6 @@ clear_query();
 check_completion("blarg \t\t", qr//, "check completion failure path");
 
 clear_query();
-
-# check COPY FROM with DEFAULT option
-check_completion(
-	"COPY foo FROM stdin WITH ( DEF\t)",
-	qr/DEFAULT /,
-	"COPY FROM with DEFAULT completion");
-
-clear_line();
 
 # send psql an explicit \q to shut it down, else pty won't close properly
 $timer->start($PostgreSQL::Test::Utils::timeout_default);

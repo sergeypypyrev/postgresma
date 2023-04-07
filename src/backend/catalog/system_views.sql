@@ -1,7 +1,7 @@
 /*
  * PostgreSQL System Views
  *
- * Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * src/backend/catalog/system_views.sql
  *
@@ -53,7 +53,7 @@ CREATE VIEW pg_group AS
     SELECT
         rolname AS groname,
         oid AS grosysid,
-        ARRAY(SELECT member FROM pg_auth_members WHERE roleid = pg_authid.oid) AS grolist
+        ARRAY(SELECT member FROM pg_auth_members WHERE roleid = oid) AS grolist
     FROM pg_authid
     WHERE NOT rolcanlogin;
 
@@ -371,8 +371,9 @@ CREATE VIEW pg_publication_tables AS
         C.relname AS tablename,
         ( SELECT array_agg(a.attname ORDER BY a.attnum)
           FROM pg_attribute a
-          WHERE a.attrelid = GPT.relid AND
-                a.attnum = ANY(GPT.attrs)
+          WHERE a.attrelid = GPT.relid AND a.attnum > 0 AND
+                NOT a.attisdropped AND
+                (a.attnum = ANY(GPT.attrs) OR GPT.attrs IS NULL)
         ) AS attnames,
         pg_get_expr(GPT.qual, GPT.relid) AS rowfilter
     FROM pg_publication P,
@@ -655,17 +656,14 @@ CREATE VIEW pg_stat_all_tables AS
             N.nspname AS schemaname,
             C.relname AS relname,
             pg_stat_get_numscans(C.oid) AS seq_scan,
-            pg_stat_get_lastscan(C.oid) AS last_seq_scan,
             pg_stat_get_tuples_returned(C.oid) AS seq_tup_read,
             sum(pg_stat_get_numscans(I.indexrelid))::bigint AS idx_scan,
-            max(pg_stat_get_lastscan(I.indexrelid)) AS last_idx_scan,
             sum(pg_stat_get_tuples_fetched(I.indexrelid))::bigint +
             pg_stat_get_tuples_fetched(C.oid) AS idx_tup_fetch,
             pg_stat_get_tuples_inserted(C.oid) AS n_tup_ins,
             pg_stat_get_tuples_updated(C.oid) AS n_tup_upd,
             pg_stat_get_tuples_deleted(C.oid) AS n_tup_del,
             pg_stat_get_tuples_hot_updated(C.oid) AS n_tup_hot_upd,
-            pg_stat_get_tuples_newpage_updated(C.oid) AS n_tup_newpage_upd,
             pg_stat_get_live_tuples(C.oid) AS n_live_tup,
             pg_stat_get_dead_tuples(C.oid) AS n_dead_tup,
             pg_stat_get_mod_since_analyze(C.oid) AS n_mod_since_analyze,
@@ -697,8 +695,7 @@ CREATE VIEW pg_stat_xact_all_tables AS
             pg_stat_get_xact_tuples_inserted(C.oid) AS n_tup_ins,
             pg_stat_get_xact_tuples_updated(C.oid) AS n_tup_upd,
             pg_stat_get_xact_tuples_deleted(C.oid) AS n_tup_del,
-            pg_stat_get_xact_tuples_hot_updated(C.oid) AS n_tup_hot_upd,
-            pg_stat_get_xact_tuples_newpage_updated(C.oid) AS n_tup_newpage_upd
+            pg_stat_get_xact_tuples_hot_updated(C.oid) AS n_tup_hot_upd
     FROM pg_class C LEFT JOIN
          pg_index I ON C.oid = I.indrelid
          LEFT JOIN pg_namespace N ON (N.oid = C.relnamespace)
@@ -777,7 +774,6 @@ CREATE VIEW pg_stat_all_indexes AS
             C.relname AS relname,
             I.relname AS indexrelname,
             pg_stat_get_numscans(I.oid) AS idx_scan,
-            pg_stat_get_lastscan(I.oid) AS last_idx_scan,
             pg_stat_get_tuples_returned(I.oid) AS idx_tup_read,
             pg_stat_get_tuples_fetched(I.oid) AS idx_tup_fetch
     FROM pg_class C JOIN
@@ -950,7 +946,6 @@ CREATE VIEW pg_stat_subscription AS
             su.oid AS subid,
             su.subname,
             st.pid,
-            st.leader_pid,
             st.relid,
             st.received_lsn,
             st.last_msg_send_time,
@@ -1118,22 +1113,6 @@ CREATE VIEW pg_stat_bgwriter AS
         pg_stat_get_buf_fsync_backend() AS buffers_backend_fsync,
         pg_stat_get_buf_alloc() AS buffers_alloc,
         pg_stat_get_bgwriter_stat_reset_time() AS stats_reset;
-
-CREATE VIEW pg_stat_io AS
-SELECT
-       b.backend_type,
-       b.io_object,
-       b.io_context,
-       b.reads,
-       b.writes,
-       b.extends,
-       b.op_bytes,
-       b.hits,
-       b.evictions,
-       b.reuses,
-       b.fsyncs,
-       b.stats_reset
-FROM pg_stat_get_io() b;
 
 CREATE VIEW pg_stat_wal AS
     SELECT
@@ -1318,9 +1297,8 @@ REVOKE ALL ON pg_replication_origin_status FROM public;
 -- All columns of pg_subscription except subconninfo are publicly readable.
 REVOKE ALL ON pg_subscription FROM public;
 GRANT SELECT (oid, subdbid, subskiplsn, subname, subowner, subenabled,
-              subbinary, substream, subtwophasestate, subdisableonerr,
-			  subpasswordrequired, subrunasowner,
-              subslotname, subsynccommit, subpublications, suborigin)
+              subbinary, substream, subtwophasestate, subdisableonerr, subslotname,
+              subsynccommit, subpublications)
     ON pg_subscription TO public;
 
 CREATE VIEW pg_stat_subscription_stats AS

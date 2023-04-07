@@ -9,7 +9,7 @@
  * Shridhar Daithankar <shridhar_daithankar@persistent.co.in>
  *
  * contrib/dblink/dblink.c
- * Copyright (c) 2001-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2022, PostgreSQL Global Development Group
  * ALL RIGHTS RESERVED;
  *
  * Permission to use, copy, modify, and distribute this software and its
@@ -48,7 +48,6 @@
 #include "funcapi.h"
 #include "lib/stringinfo.h"
 #include "libpq-fe.h"
-#include "libpq/libpq-be-fe-helpers.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "parser/scansup.h"
@@ -115,7 +114,7 @@ static void dblink_security_check(PGconn *conn, remoteConn *rconn);
 static void dblink_res_error(PGconn *conn, const char *conname, PGresult *res,
 							 bool fail, const char *fmt,...) pg_attribute_printf(5, 6);
 static char *get_connect_string(const char *servername);
-static char *escape_param_str(const char *str);
+static char *escape_param_str(const char *from);
 static void validate_pkattnums(Relation rel,
 							   int2vector *pkattnums_arg, int32 pknumatts_arg,
 							   int **pkattnums, int *pknumatts);
@@ -158,7 +157,8 @@ dblink_res_internalerror(PGconn *conn, PGresult *res, const char *p2)
 {
 	char	   *msg = pchomp(PQerrorMessage(conn));
 
-	PQclear(res);
+	if (res)
+		PQclear(res);
 	elog(ERROR, "%s: %s", p2, msg);
 }
 
@@ -200,14 +200,37 @@ dblink_get_conn(char *conname_or_str,
 			connstr = conname_or_str;
 		dblink_connstr_check(connstr);
 
+		/*
+		 * We must obey fd.c's limit on non-virtual file descriptors.  Assume
+		 * that a PGconn represents one long-lived FD.  (Doing this here also
+		 * ensures that VFDs are closed if needed to make room.)
+		 */
+		if (!AcquireExternalFD())
+		{
+#ifndef WIN32					/* can't write #if within ereport() macro */
+			ereport(ERROR,
+					(errcode(ERRCODE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION),
+					 errmsg("could not establish connection"),
+					 errdetail("There are too many open files on the local server."),
+					 errhint("Raise the server's max_files_per_process and/or \"ulimit -n\" limits.")));
+#else
+			ereport(ERROR,
+					(errcode(ERRCODE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION),
+					 errmsg("could not establish connection"),
+					 errdetail("There are too many open files on the local server."),
+					 errhint("Raise the server's max_files_per_process setting.")));
+#endif
+		}
+
 		/* OK to make connection */
-		conn = libpqsrv_connect(connstr, PG_WAIT_EXTENSION);
+		conn = PQconnectdb(connstr);
 
 		if (PQstatus(conn) == CONNECTION_BAD)
 		{
 			char	   *msg = pchomp(PQerrorMessage(conn));
 
-			libpqsrv_disconnect(conn);
+			PQfinish(conn);
+			ReleaseExternalFD();
 			ereport(ERROR,
 					(errcode(ERRCODE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION),
 					 errmsg("could not establish connection"),
@@ -290,13 +313,36 @@ dblink_connect(PG_FUNCTION_ARGS)
 	/* check password in connection string if not superuser */
 	dblink_connstr_check(connstr);
 
+	/*
+	 * We must obey fd.c's limit on non-virtual file descriptors.  Assume that
+	 * a PGconn represents one long-lived FD.  (Doing this here also ensures
+	 * that VFDs are closed if needed to make room.)
+	 */
+	if (!AcquireExternalFD())
+	{
+#ifndef WIN32					/* can't write #if within ereport() macro */
+		ereport(ERROR,
+				(errcode(ERRCODE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION),
+				 errmsg("could not establish connection"),
+				 errdetail("There are too many open files on the local server."),
+				 errhint("Raise the server's max_files_per_process and/or \"ulimit -n\" limits.")));
+#else
+		ereport(ERROR,
+				(errcode(ERRCODE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION),
+				 errmsg("could not establish connection"),
+				 errdetail("There are too many open files on the local server."),
+				 errhint("Raise the server's max_files_per_process setting.")));
+#endif
+	}
+
 	/* OK to make connection */
-	conn = libpqsrv_connect(connstr, PG_WAIT_EXTENSION);
+	conn = PQconnectdb(connstr);
 
 	if (PQstatus(conn) == CONNECTION_BAD)
 	{
 		msg = pchomp(PQerrorMessage(conn));
-		libpqsrv_disconnect(conn);
+		PQfinish(conn);
+		ReleaseExternalFD();
 		if (rconn)
 			pfree(rconn);
 
@@ -321,7 +367,10 @@ dblink_connect(PG_FUNCTION_ARGS)
 	else
 	{
 		if (pconn->conn)
-			libpqsrv_disconnect(pconn->conn);
+		{
+			PQfinish(pconn->conn);
+			ReleaseExternalFD();
+		}
 		pconn->conn = conn;
 	}
 
@@ -354,7 +403,8 @@ dblink_disconnect(PG_FUNCTION_ARGS)
 	if (!conn)
 		dblink_conn_not_avail(conname);
 
-	libpqsrv_disconnect(conn);
+	PQfinish(conn);
+	ReleaseExternalFD();
 	if (rconn)
 	{
 		deleteConnection(conname);
@@ -789,7 +839,10 @@ dblink_record_internal(FunctionCallInfo fcinfo, bool is_async)
 	{
 		/* if needed, close the connection to the database */
 		if (freeconn)
-			libpqsrv_disconnect(conn);
+		{
+			PQfinish(conn);
+			ReleaseExternalFD();
+		}
 	}
 	PG_END_TRY();
 
@@ -920,7 +973,7 @@ materializeResult(FunctionCallInfo fcinfo, PGconn *conn, PGresult *res)
 			rsinfo->setDesc = tupdesc;
 			MemoryContextSwitchTo(oldcontext);
 
-			values = palloc_array(char *, nfields);
+			values = (char **) palloc(nfields * sizeof(char *));
 
 			/* put all tuples into the tuplestore */
 			for (row = 0; row < ntuples; row++)
@@ -1224,7 +1277,7 @@ storeRow(volatile storeInfo *sinfo, PGresult *res, bool first)
 		 */
 		if (sinfo->cstrs)
 			pfree(sinfo->cstrs);
-		sinfo->cstrs = palloc_array(char *, nfields);
+		sinfo->cstrs = (char **) palloc(nfields * sizeof(char *));
 	}
 
 	/* Should have a single-row result if we get here */
@@ -1284,7 +1337,7 @@ dblink_get_connections(PG_FUNCTION_ARGS)
 	}
 
 	if (astate)
-		PG_RETURN_DATUM(makeArrayResult(astate,
+		PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate,
 											  CurrentMemoryContext));
 	else
 		PG_RETURN_NULL();
@@ -1464,7 +1517,10 @@ dblink_exec(PG_FUNCTION_ARGS)
 	{
 		/* if needed, close the connection to the database */
 		if (freeconn)
-			libpqsrv_disconnect(conn);
+		{
+			PQfinish(conn);
+			ReleaseExternalFD();
+		}
 	}
 	PG_END_TRY();
 
@@ -1563,7 +1619,7 @@ dblink_get_pkey(PG_FUNCTION_ARGS)
 		HeapTuple	tuple;
 		Datum		result;
 
-		values = palloc_array(char *, 2);
+		values = (char **) palloc(2 * sizeof(char *));
 		values[0] = psprintf("%d", call_cntr + 1);
 		values[1] = results[call_cntr];
 
@@ -1953,32 +2009,27 @@ dblink_fdw_validator(PG_FUNCTION_ARGS)
 		{
 			/*
 			 * Unknown option, or invalid option for the context specified, so
-			 * complain about it.  Provide a hint with a valid option that
-			 * looks similar, if there is one.
+			 * complain about it.  Provide a hint with list of valid options
+			 * for the context.
 			 */
+			StringInfoData buf;
 			const PQconninfoOption *opt;
-			const char *closest_match;
-			ClosestMatchState match_state;
-			bool		has_valid_options = false;
 
-			initClosestMatch(&match_state, def->defname, 4);
+			initStringInfo(&buf);
 			for (opt = options; opt->keyword; opt++)
 			{
 				if (is_valid_dblink_option(options, opt->keyword, context))
-				{
-					has_valid_options = true;
-					updateClosestMatch(&match_state, opt->keyword);
-				}
+					appendStringInfo(&buf, "%s%s",
+									 (buf.len > 0) ? ", " : "",
+									 opt->keyword);
 			}
-
-			closest_match = getClosestMatch(&match_state);
 			ereport(ERROR,
 					(errcode(ERRCODE_FDW_OPTION_NAME_NOT_FOUND),
 					 errmsg("invalid option \"%s\"", def->defname),
-					 has_valid_options ? closest_match ?
-					 errhint("Perhaps you meant the option \"%s\".",
-							 closest_match) : 0 :
-					 errhint("There are no valid options in this context.")));
+					 buf.len > 0
+					 ? errhint("Valid options in this context are: %s",
+							   buf.data)
+					 : errhint("There are no valid options in this context.")));
 		}
 	}
 
@@ -2033,7 +2084,7 @@ get_pkey_attnames(Relation rel, int16 *indnkeyatts)
 			*indnkeyatts = index->indnkeyatts;
 			if (*indnkeyatts > 0)
 			{
-				result = palloc_array(char *, *indnkeyatts);
+				result = (char **) palloc(*indnkeyatts * sizeof(char *));
 
 				for (i = 0; i < *indnkeyatts; i++)
 					result[i] = SPI_fname(tupdesc, index->indkey.values[i]);
@@ -2074,7 +2125,7 @@ get_text_array_contents(ArrayType *array, int *numitems)
 	get_typlenbyvalalign(ARR_ELEMTYPE(array),
 						 &typlen, &typbyval, &typalign);
 
-	values = palloc_array(char *, nitems);
+	values = (char **) palloc(nitems * sizeof(char *));
 
 	ptr = ARR_DATA_PTR(array);
 	bitmap = ARR_NULLBITMAP(array);
@@ -2551,7 +2602,8 @@ createNewConnection(const char *name, remoteConn *rconn)
 
 	if (found)
 	{
-		libpqsrv_disconnect(rconn->conn);
+		PQfinish(rconn->conn);
+		ReleaseExternalFD();
 		pfree(rconn);
 
 		ereport(ERROR,
@@ -2591,7 +2643,8 @@ dblink_security_check(PGconn *conn, remoteConn *rconn)
 	{
 		if (!PQconnectionUsedPassword(conn))
 		{
-			libpqsrv_disconnect(conn);
+			PQfinish(conn);
+			ReleaseExternalFD();
 			if (rconn)
 				pfree(rconn);
 
@@ -2703,7 +2756,8 @@ dblink_res_error(PGconn *conn, const char *conname, PGresult *res,
 	 * leaking all the strings too, but those are in palloc'd memory that will
 	 * get cleaned up eventually.
 	 */
-	PQclear(res);
+	if (res)
+		PQclear(res);
 
 	/*
 	 * Format the basic errcontext string.  Below, we'll add on something
@@ -2781,7 +2835,7 @@ get_connect_string(const char *servername)
 		fdw = GetForeignDataWrapper(fdwid);
 
 		/* Check permissions, user must have usage on the server. */
-		aclresult = object_aclcheck(ForeignServerRelationId, serverid, userid, ACL_USAGE);
+		aclresult = pg_foreign_server_aclcheck(serverid, userid, ACL_USAGE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_FOREIGN_SERVER, foreign_server->servername);
 
@@ -2876,7 +2930,7 @@ validate_pkattnums(Relation rel,
 				 errmsg("number of key attributes must be > 0")));
 
 	/* Allocate output array */
-	*pkattnums = palloc_array(int, pknumatts_arg);
+	*pkattnums = (int *) palloc(pknumatts_arg * sizeof(int));
 	*pknumatts = pknumatts_arg;
 
 	/* Validate attnums and convert to internal form */

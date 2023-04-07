@@ -4,7 +4,7 @@
  *		Functions for archiving WAL files and restoring from the archive.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/xlogarchive.c
@@ -23,7 +23,6 @@
 #include "access/xlog_internal.h"
 #include "access/xlogarchive.h"
 #include "common/archive.h"
-#include "common/percentrepl.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/startup.h"
@@ -148,12 +147,15 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 		Assert(strcmp(lastRestartPointFname, xlogfname) <= 0);
 	}
 	else
-		XLogFileName(lastRestartPointFname, 0, 0, wal_segment_size);
+		XLogFileName(lastRestartPointFname, 0, 0L, wal_segment_size);
 
 	/* Build the restore command to execute */
 	xlogRestoreCmd = BuildRestoreCommand(recoveryRestoreCommand,
 										 xlogpath, xlogfname,
 										 lastRestartPointFname);
+	if (xlogRestoreCmd == NULL)
+		elog(ERROR, "could not build restore command \"%s\"",
+			 recoveryRestoreCommand);
 
 	ereport(DEBUG3,
 			(errmsg_internal("executing restore command \"%s\"",
@@ -167,7 +169,6 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	/*
 	 * Copy xlog from archival storage to XLOGDIR
 	 */
-	fflush(NULL);
 	pgstat_report_wait_start(WAIT_EVENT_RESTORE_COMMAND);
 	rc = system(xlogRestoreCmd);
 	pgstat_report_wait_end();
@@ -289,8 +290,11 @@ void
 ExecuteRecoveryCommand(const char *command, const char *commandName,
 					   bool failOnSignal, uint32 wait_event_info)
 {
-	char	   *xlogRecoveryCmd;
+	char		xlogRecoveryCmd[MAXPGPATH];
 	char		lastRestartPointFname[MAXPGPATH];
+	char	   *dp;
+	char	   *endp;
+	const char *sp;
 	int			rc;
 	XLogSegNo	restartSegNo;
 	XLogRecPtr	restartRedoPtr;
@@ -311,7 +315,42 @@ ExecuteRecoveryCommand(const char *command, const char *commandName,
 	/*
 	 * construct the command to be executed
 	 */
-	xlogRecoveryCmd = replace_percent_placeholders(command, commandName, "r", lastRestartPointFname);
+	dp = xlogRecoveryCmd;
+	endp = xlogRecoveryCmd + MAXPGPATH - 1;
+	*endp = '\0';
+
+	for (sp = command; *sp; sp++)
+	{
+		if (*sp == '%')
+		{
+			switch (sp[1])
+			{
+				case 'r':
+					/* %r: filename of last restartpoint */
+					sp++;
+					strlcpy(dp, lastRestartPointFname, endp - dp);
+					dp += strlen(dp);
+					break;
+				case '%':
+					/* convert %% to a single % */
+					sp++;
+					if (dp < endp)
+						*dp++ = *sp;
+					break;
+				default:
+					/* otherwise treat the % as not special */
+					if (dp < endp)
+						*dp++ = *sp;
+					break;
+			}
+		}
+		else
+		{
+			if (dp < endp)
+				*dp++ = *sp;
+		}
+	}
+	*dp = '\0';
 
 	ereport(DEBUG3,
 			(errmsg_internal("executing %s \"%s\"", commandName, command)));
@@ -319,12 +358,9 @@ ExecuteRecoveryCommand(const char *command, const char *commandName,
 	/*
 	 * execute the constructed command
 	 */
-	fflush(NULL);
 	pgstat_report_wait_start(wait_event_info);
 	rc = system(xlogRecoveryCmd);
 	pgstat_report_wait_end();
-
-	pfree(xlogRecoveryCmd);
 
 	if (rc != 0)
 	{

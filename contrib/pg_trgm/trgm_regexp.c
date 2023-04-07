@@ -181,7 +181,7 @@
  * 7) Mark state 3 final because state 5 of source NFA is marked as final.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -196,7 +196,6 @@
 #include "tsearch/ts_locale.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
-#include "varatt.h"
 
 /*
  * Uncomment (or use -DTRGM_REGEXP_DEBUG) to print debug info,
@@ -1947,7 +1946,9 @@ packGraph(TrgmNFA *trgmNFA, MemoryContext rcontext)
 				arcsCount;
 	HASH_SEQ_STATUS scan_status;
 	TrgmState  *state;
-	TrgmPackArcInfo *arcs;
+	TrgmPackArcInfo *arcs,
+			   *p1,
+			   *p2;
 	TrgmPackedArc *packedArcs;
 	TrgmPackedGraph *result;
 	int			i,
@@ -2019,25 +2020,17 @@ packGraph(TrgmNFA *trgmNFA, MemoryContext rcontext)
 	qsort(arcs, arcIndex, sizeof(TrgmPackArcInfo), packArcInfoCmp);
 
 	/* We could have duplicates because states were merged. Remove them. */
-	if (arcIndex > 1)
+	/* p1 is probe point, p2 is last known non-duplicate. */
+	p2 = arcs;
+	for (p1 = arcs + 1; p1 < arcs + arcIndex; p1++)
 	{
-		/* p1 is probe point, p2 is last known non-duplicate. */
-		TrgmPackArcInfo *p1,
-				   *p2;
-
-		p2 = arcs;
-		for (p1 = arcs + 1; p1 < arcs + arcIndex; p1++)
+		if (packArcInfoCmp(p1, p2) > 0)
 		{
-			if (packArcInfoCmp(p1, p2) > 0)
-			{
-				p2++;
-				*p2 = *p1;
-			}
+			p2++;
+			*p2 = *p1;
 		}
-		arcsCount = (p2 - arcs) + 1;
 	}
-	else
-		arcsCount = arcIndex;
+	arcsCount = (p2 - arcs) + 1;
 
 	/* Create packed representation */
 	result = (TrgmPackedGraph *)

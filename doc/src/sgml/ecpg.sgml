@@ -584,7 +584,7 @@ EXEC SQL COMMIT;
     The following transaction management commands are available:
 
     <variablelist>
-     <varlistentry id="ecpg-transactions-exec-sql-commit">
+     <varlistentry>
       <term><literal>EXEC SQL COMMIT</literal></term>
       <listitem>
        <para>
@@ -593,7 +593,7 @@ EXEC SQL COMMIT;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-transactions-exec-sql-rollback">
+     <varlistentry>
       <term><literal>EXEC SQL ROLLBACK</literal></term>
       <listitem>
        <para>
@@ -602,7 +602,7 @@ EXEC SQL COMMIT;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-transactions-exec-sql-prepare-transaction">
+     <varlistentry>
       <term><literal>EXEC SQL PREPARE TRANSACTION </literal><replaceable class="parameter">transaction_id</replaceable></term>
       <listitem>
        <para>
@@ -611,7 +611,7 @@ EXEC SQL COMMIT;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-transactions-exec-sql-commit-prepared">
+     <varlistentry>
       <term><literal>EXEC SQL COMMIT PREPARED </literal><replaceable class="parameter">transaction_id</replaceable></term>
       <listitem>
        <para>
@@ -620,7 +620,7 @@ EXEC SQL COMMIT;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-transactions-exec-sql-rollback-prepared">
+     <varlistentry>
       <term><literal>EXEC SQL ROLLBACK PREPARED </literal><replaceable class="parameter">transaction_id</replaceable></term>
       <listitem>
        <para>
@@ -629,7 +629,7 @@ EXEC SQL COMMIT;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-transactions-exec-sql-autocommit-on">
+     <varlistentry>
       <term><literal>EXEC SQL SET AUTOCOMMIT TO ON</literal></term>
       <listitem>
        <para>
@@ -638,7 +638,7 @@ EXEC SQL COMMIT;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-transactions-exec-sql-autocommit-off">
+     <varlistentry>
       <term><literal>EXEC SQL SET AUTOCOMMIT TO OFF</literal></term>
       <listitem>
        <para>
@@ -1110,7 +1110,7 @@ struct varchar_var { int len; char arr[180]; } var;
      see <xref linkend="ecpg-pgtypes"/>.
     </para>
 
-    <sect4 id="ecpg-special-types-timestamp-date">
+    <sect4>
      <title>timestamp, date</title>
 
      <para>
@@ -1275,7 +1275,7 @@ EXEC SQL END DECLARE SECTION;
      </para>
     </sect4>
 
-    <sect4 id="ecpg-special-types-bytea">
+    <sect4>
      <title>bytea</title>
 
      <para>
@@ -1481,12 +1481,8 @@ EXEC SQL END DECLARE SECTION;
      </para>
     </sect4>
 
-    <sect4 id="ecpg-variables-nonprimitive-c-typedefs">
+    <sect4>
      <title>Typedefs</title>
-     <indexterm>
-      <primary>typedef</primary>
-      <secondary>in ECPG</secondary>
-     </indexterm>
 
      <para>
       Use the <literal>typedef</literal> keyword to map new types to already
@@ -1501,44 +1497,11 @@ EXEC SQL END DECLARE SECTION;
 <programlisting>
 EXEC SQL TYPE serial_t IS long;
 </programlisting>
-      This declaration does not need to be part of a declare section;
-      that is, you can also write typedefs as normal C statements.
+      This declaration does not need to be part of a declare section.
      </para>
-
-     <para>
-      Any word you declare as a typedef cannot be used as a SQL keyword
-      in <literal>EXEC SQL</literal> commands later in the same program.
-      For example, this won't work:
-<programlisting>
-EXEC SQL BEGIN DECLARE SECTION;
-    typedef int start;
-EXEC SQL END DECLARE SECTION;
-...
-EXEC SQL START TRANSACTION;
-</programlisting>
-      ECPG will report a syntax error for <literal>START
-      TRANSACTION</literal>, because it no longer
-      recognizes <literal>START</literal> as a SQL keyword,
-      only as a typedef.
-      (If you have such a conflict, and renaming the typedef
-      seems impractical, you could write the SQL command
-      using <link linkend="ecpg-dynamic">dynamic SQL</link>.)
-     </para>
-
-     <note>
-      <para>
-       In <productname>PostgreSQL</productname> releases before v16, use
-       of SQL keywords as typedef names was likely to result in syntax
-       errors associated with use of the typedef itself, rather than use
-       of the name as a SQL keyword.  The new behavior is less likely to
-       cause problems when an existing ECPG application is recompiled in
-       a new <productname>PostgreSQL</productname> release with new
-       keywords.
-      </para>
-     </note>
     </sect4>
 
-    <sect4 id="ecpg-variables-nonprimitive-c-pointers">
+    <sect4>
      <title>Pointers</title>
 
      <para>
@@ -1570,7 +1533,7 @@ EXEC SQL END DECLARE SECTION;
     nonprimitive types, described in the previous section.
    </para>
 
-   <sect3 id="ecpg-variables-nonprimitive-sql-arrays">
+   <sect3>
     <title>Arrays</title>
 
     <para>
@@ -1693,7 +1656,7 @@ while (1)
     </para>
    </sect3>
 
-   <sect3 id="ecpg-variables-nonprimitive-sql-composite">
+   <sect3>
     <title>Composite Types</title>
 
     <para>
@@ -1813,7 +1776,7 @@ while (1)
     </para>
    </sect3>
 
-   <sect3 id="ecpg-variables-nonprimitive-sql-user-defined-base-types">
+   <sect3>
     <title>User-Defined Base Types</title>
 
     <para>
@@ -2132,7 +2095,7 @@ PGTYPESchar_free(out);
    <para>
    The following functions can be used to work with the numeric type:
    <variablelist>
-    <varlistentry id="ecpg-pgtypes-numeric-new">
+    <varlistentry>
      <term><function>PGTYPESnumeric_new</function></term>
      <listitem>
       <para>
@@ -2144,7 +2107,7 @@ numeric *PGTYPESnumeric_new(void);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-free">
+    <varlistentry>
      <term><function>PGTYPESnumeric_free</function></term>
      <listitem>
       <para>
@@ -2156,7 +2119,7 @@ void PGTYPESnumeric_free(numeric *var);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-from-asc">
+    <varlistentry>
      <term><function>PGTYPESnumeric_from_asc</function></term>
      <listitem>
       <para>
@@ -2179,7 +2142,7 @@ numeric *PGTYPESnumeric_from_asc(char *str, char **endptr);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-to-asc">
+    <varlistentry>
      <term><function>PGTYPESnumeric_to_asc</function></term>
      <listitem>
       <para>
@@ -2195,7 +2158,7 @@ char *PGTYPESnumeric_to_asc(numeric *num, int dscale);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-add">
+    <varlistentry>
      <term><function>PGTYPESnumeric_add</function></term>
      <listitem>
       <para>
@@ -2211,7 +2174,7 @@ int PGTYPESnumeric_add(numeric *var1, numeric *var2, numeric *result);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-sub">
+    <varlistentry>
      <term><function>PGTYPESnumeric_sub</function></term>
      <listitem>
       <para>
@@ -2227,7 +2190,7 @@ int PGTYPESnumeric_sub(numeric *var1, numeric *var2, numeric *result);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-mul">
+    <varlistentry>
      <term><function>PGTYPESnumeric_mul</function></term>
      <listitem>
       <para>
@@ -2243,7 +2206,7 @@ int PGTYPESnumeric_mul(numeric *var1, numeric *var2, numeric *result);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-div">
+    <varlistentry>
      <term><function>PGTYPESnumeric_div</function></term>
      <listitem>
       <para>
@@ -2259,7 +2222,7 @@ int PGTYPESnumeric_div(numeric *var1, numeric *var2, numeric *result);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-cmp">
+    <varlistentry>
      <term><function>PGTYPESnumeric_cmp</function></term>
      <listitem>
       <para>
@@ -2291,7 +2254,7 @@ int PGTYPESnumeric_cmp(numeric *var1, numeric *var2)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-from-int">
+    <varlistentry>
      <term><function>PGTYPESnumeric_from_int</function></term>
      <listitem>
       <para>
@@ -2306,7 +2269,7 @@ int PGTYPESnumeric_from_int(signed int int_val, numeric *var);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-from-long">
+    <varlistentry>
      <term><function>PGTYPESnumeric_from_long</function></term>
      <listitem>
       <para>
@@ -2321,7 +2284,7 @@ int PGTYPESnumeric_from_long(signed long int long_val, numeric *var);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-copy">
+    <varlistentry>
      <term><function>PGTYPESnumeric_copy</function></term>
      <listitem>
       <para>
@@ -2336,7 +2299,7 @@ int PGTYPESnumeric_copy(numeric *src, numeric *dst);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-from-double">
+    <varlistentry>
      <term><function>PGTYPESnumeric_from_double</function></term>
      <listitem>
       <para>
@@ -2351,7 +2314,7 @@ int  PGTYPESnumeric_from_double(double d, numeric *dst);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-to-double">
+    <varlistentry>
      <term><function>PGTYPESnumeric_to_double</function></term>
      <listitem>
       <para>
@@ -2368,7 +2331,7 @@ int PGTYPESnumeric_to_double(numeric *nv, double *dp)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-to-int">
+    <varlistentry>
      <term><function>PGTYPESnumeric_to_int</function></term>
      <listitem>
       <para>
@@ -2385,7 +2348,7 @@ int PGTYPESnumeric_to_int(numeric *nv, int *ip);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-to-long">
+    <varlistentry>
      <term><function>PGTYPESnumeric_to_long</function></term>
      <listitem>
       <para>
@@ -2403,7 +2366,7 @@ int PGTYPESnumeric_to_long(numeric *nv, long *lp);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-to-decimal">
+    <varlistentry>
      <term><function>PGTYPESnumeric_to_decimal</function></term>
      <listitem>
       <para>
@@ -2421,7 +2384,7 @@ int PGTYPESnumeric_to_decimal(numeric *src, decimal *dst);
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-pgtypes-numeric-from-decimal">
+    <varlistentry>
      <term><function>PGTYPESnumeric_from_decimal</function></term>
      <listitem>
       <para>
@@ -3554,7 +3517,7 @@ int PGTYPESinterval_copy(interval *intvlsrc, interval *intvldest);
     The following functions can be used to work with the decimal type and are
     not only contained in the <literal>libcompat</literal> library.
     <variablelist>
-     <varlistentry id="ecpg-pgtypes-decimal-new">
+     <varlistentry>
       <term><function>PGTYPESdecimal_new</function></term>
       <listitem>
        <para>
@@ -3566,7 +3529,7 @@ decimal *PGTYPESdecimal_new(void);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-pgtypes-decimal-free">
+     <varlistentry>
       <term><function>PGTYPESdecimal_free</function></term>
       <listitem>
        <para>
@@ -3585,7 +3548,7 @@ void PGTYPESdecimal_free(decimal *var);
     <title>errno Values of pgtypeslib</title>
    <para>
     <variablelist>
-     <varlistentry id="ecpg-pgtypes-errno-pgtypes-num-bad-numeric">
+     <varlistentry>
       <term><literal>PGTYPES_NUM_BAD_NUMERIC</literal></term>
       <listitem>
        <para>
@@ -3595,7 +3558,7 @@ void PGTYPESdecimal_free(decimal *var);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-pgtypes-errno-pgtypes-num-overflow">
+     <varlistentry>
       <term><literal>PGTYPES_NUM_OVERFLOW</literal></term>
       <listitem>
        <para>
@@ -3606,7 +3569,7 @@ void PGTYPESdecimal_free(decimal *var);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-pgtypes-errno-pgtypes-num-underflow">
+     <varlistentry>
       <term><literal>PGTYPES_NUM_UNDERFLOW</literal></term>
       <listitem>
        <para>
@@ -3617,7 +3580,7 @@ void PGTYPESdecimal_free(decimal *var);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-pgtypes-errno-pgtypes-num-divide-zero">
+     <varlistentry>
       <term><literal>PGTYPES_NUM_DIVIDE_ZERO</literal></term>
       <listitem>
        <para>
@@ -3626,7 +3589,7 @@ void PGTYPESdecimal_free(decimal *var);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-pgtypes-errno-pgtypes-date-bad-date">
+     <varlistentry>
       <term><literal>PGTYPES_DATE_BAD_DATE</literal></term>
       <listitem>
        <para>
@@ -3636,7 +3599,7 @@ void PGTYPESdecimal_free(decimal *var);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-pgtypes-errno-pgtypes-date-err-eargs">
+     <varlistentry>
       <term><literal>PGTYPES_DATE_ERR_EARGS</literal></term>
       <listitem>
        <para>
@@ -3646,7 +3609,7 @@ void PGTYPESdecimal_free(decimal *var);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-pgtypes-errno-pgtypes-date-err-enoshortdate">
+     <varlistentry>
       <term><literal>PGTYPES_DATE_ERR_ENOSHORTDATE</literal></term>
       <listitem>
        <para>
@@ -3656,7 +3619,7 @@ void PGTYPESdecimal_free(decimal *var);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-pgtypes-errno-pgtypes-intvl-bad-interval">
+     <varlistentry>
       <term><literal>PGTYPES_INTVL_BAD_INTERVAL</literal></term>
       <listitem>
        <para>
@@ -3668,7 +3631,7 @@ void PGTYPESdecimal_free(decimal *var);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-pgtypes-errno-pgtypes-date-err-enotdmy">
+     <varlistentry>
       <term><literal>PGTYPES_DATE_ERR_ENOTDMY</literal></term>
       <listitem>
        <para>
@@ -3678,7 +3641,7 @@ void PGTYPESdecimal_free(decimal *var);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-pgtypes-errno-pgtypes-date-bad-day">
+     <varlistentry>
       <term><literal>PGTYPES_DATE_BAD_DAY</literal></term>
       <listitem>
        <para>
@@ -3688,7 +3651,7 @@ void PGTYPESdecimal_free(decimal *var);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-pgtypes-errno-pgtypes-date-bad-month">
+     <varlistentry>
       <term><literal>PGTYPES_DATE_BAD_MONTH</literal></term>
       <listitem>
        <para>
@@ -3698,7 +3661,7 @@ void PGTYPESdecimal_free(decimal *var);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-pgtypes-errno-pgtypes-ts-bad-timestamp">
+     <varlistentry>
       <term><literal>PGTYPES_TS_BAD_TIMESTAMP</literal></term>
       <listitem>
        <para>
@@ -3710,7 +3673,7 @@ void PGTYPESdecimal_free(decimal *var);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-pgtypes-errno-pgtypes-ts-err-einftime">
+     <varlistentry>
       <term><literal>PGTYPES_TS_ERR_EINFTIME</literal></term>
       <listitem>
        <para>
@@ -3847,7 +3810,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
     variable containing an integer. Possible fields are:
 
     <variablelist>
-     <varlistentry id="ecpg-named-descriptors-cardinality">
+     <varlistentry>
       <term><literal>CARDINALITY</literal> (integer)</term>
       <listitem>
        <para>
@@ -3856,7 +3819,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-data">
+     <varlistentry>
       <term><literal>DATA</literal></term>
       <listitem>
        <para>
@@ -3866,7 +3829,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-datetime-interval-code">
+     <varlistentry>
       <term><literal>DATETIME_INTERVAL_CODE</literal> (integer)</term>
       <listitem>
        <para>
@@ -3881,7 +3844,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-datetime-interval-precision">
+     <varlistentry>
       <term><literal>DATETIME_INTERVAL_PRECISION</literal> (integer)</term>
       <listitem>
        <para>
@@ -3890,7 +3853,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-indicator">
+     <varlistentry>
       <term><literal>INDICATOR</literal> (integer)</term>
       <listitem>
        <para>
@@ -3899,7 +3862,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-key-member">
+     <varlistentry>
       <term><literal>KEY_MEMBER</literal> (integer)</term>
       <listitem>
        <para>
@@ -3908,7 +3871,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-length">
+     <varlistentry>
       <term><literal>LENGTH</literal> (integer)</term>
       <listitem>
        <para>
@@ -3917,7 +3880,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-name">
+     <varlistentry>
       <term><literal>NAME</literal> (string)</term>
       <listitem>
        <para>
@@ -3926,7 +3889,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-nullable">
+     <varlistentry>
       <term><literal>NULLABLE</literal> (integer)</term>
       <listitem>
        <para>
@@ -3935,7 +3898,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-octet-length">
+     <varlistentry>
       <term><literal>OCTET_LENGTH</literal> (integer)</term>
       <listitem>
        <para>
@@ -3944,7 +3907,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-precision">
+     <varlistentry>
       <term><literal>PRECISION</literal> (integer)</term>
       <listitem>
        <para>
@@ -3953,7 +3916,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-returned-length">
+     <varlistentry>
       <term><literal>RETURNED_LENGTH</literal> (integer)</term>
       <listitem>
        <para>
@@ -3962,7 +3925,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-returned-octet-length">
+     <varlistentry>
       <term><literal>RETURNED_OCTET_LENGTH</literal> (integer)</term>
       <listitem>
        <para>
@@ -3971,7 +3934,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-scale">
+     <varlistentry>
       <term><literal>SCALE</literal> (integer)</term>
       <listitem>
        <para>
@@ -3980,7 +3943,7 @@ EXEC SQL GET DESCRIPTOR <replaceable>name</replaceable> VALUE <replaceable>num</
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-named-descriptors-type">
+     <varlistentry>
       <term><literal>TYPE</literal> (integer)</term>
       <listitem>
        <para>
@@ -4059,7 +4022,7 @@ EXEC SQL DESCRIBE prepared_statement INTO mysqlda;
      <step><simpara>Free the memory area allocated for the input SQLDA.</simpara></step>
     </procedure>
 
-   <sect3 id="ecpg-sqlda-descriptors-sqlda">
+   <sect3>
     <title>SQLDA Data Structure</title>
 
     <para>
@@ -4110,7 +4073,7 @@ typedef struct sqlda_struct sqlda_t;
       The meaning of the fields is:
 
     <variablelist>
-     <varlistentry id="ecpg-sqlda-sqlda-sqldaid">
+     <varlistentry>
       <term><literal>sqldaid</literal></term>
       <listitem>
        <para>
@@ -4119,7 +4082,7 @@ typedef struct sqlda_struct sqlda_t;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sqlda-sqlda-sqldabc">
+     <varlistentry>
       <term><literal>sqldabc</literal></term>
       <listitem>
        <para>
@@ -4128,7 +4091,7 @@ typedef struct sqlda_struct sqlda_t;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sqlda-sqlda-sqln">
+     <varlistentry>
       <term><literal>sqln</literal></term>
       <listitem>
        <para>
@@ -4143,7 +4106,7 @@ typedef struct sqlda_struct sqlda_t;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sqlda-sqlda-sqld">
+     <varlistentry>
       <term><literal>sqld</literal></term>
       <listitem>
        <para>
@@ -4152,7 +4115,7 @@ typedef struct sqlda_struct sqlda_t;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sqlda-sqlda-desc-next">
+     <varlistentry>
       <term><literal>desc_next</literal></term>
       <listitem>
        <para>
@@ -4162,7 +4125,7 @@ typedef struct sqlda_struct sqlda_t;
        </para>
       </listitem>
      </varlistentry>
-     <varlistentry id="ecpg-sqlda-sqlda-sqlvar">
+     <varlistentry>
       <term><literal>sqlvar</literal></term>
       <listitem>
        <para>
@@ -4198,7 +4161,7 @@ typedef struct sqlvar_struct sqlvar_t;
       The meaning of the fields is:
 
         <variablelist>
-         <varlistentry id="ecpg-sqlda-sqlvar-sqltype">
+         <varlistentry>
          <term><literal>sqltype</literal></term>
           <listitem>
            <para>
@@ -4208,7 +4171,7 @@ typedef struct sqlvar_struct sqlvar_t;
           </listitem>
          </varlistentry>
 
-         <varlistentry id="ecpg-sqlda-sqlvar-sqllen">
+         <varlistentry>
          <term><literal>sqllen</literal></term>
           <listitem>
            <para>
@@ -4217,7 +4180,7 @@ typedef struct sqlvar_struct sqlvar_t;
           </listitem>
          </varlistentry>
 
-         <varlistentry id="ecpg-sqlda-sqlvar-sqldata">
+         <varlistentry>
          <term><literal>sqldata</literal></term>
           <listitem>
            <para>
@@ -4227,7 +4190,7 @@ typedef struct sqlvar_struct sqlvar_t;
           </listitem>
          </varlistentry>
 
-         <varlistentry id="ecpg-sqlda-sqlvar-sqlind">
+         <varlistentry>
          <term><literal>sqlind</literal></term>
           <listitem>
            <para>
@@ -4237,7 +4200,7 @@ typedef struct sqlvar_struct sqlvar_t;
           </listitem>
          </varlistentry>
 
-         <varlistentry id="ecpg-sqlda-sqlvar-sqlname">
+         <varlistentry>
          <term><literal>sqlname</literal></term>
           <listitem>
            <para>
@@ -4267,7 +4230,7 @@ struct sqlname
 </programlisting>
       The meaning of the fields is:
             <variablelist>
-             <varlistentry id="ecpg-sqlda-sqlname-length">
+             <varlistentry>
               <term><literal>length</literal></term>
                <listitem>
                 <para>
@@ -4275,7 +4238,7 @@ struct sqlname
                 </para>
                </listitem>
               </varlistentry>
-             <varlistentry id="ecpg-sqlda-sqlname-data">
+             <varlistentry>
               <term><literal>data</literal></term>
                <listitem>
                 <para>
@@ -4857,7 +4820,7 @@ EXEC SQL WHENEVER <replaceable>condition</replaceable> <replaceable>action</repl
     <replaceable>condition</replaceable> can be one of the following:
 
     <variablelist>
-     <varlistentry id="ecpg-whenever-sqlerror">
+     <varlistentry>
       <term><literal>SQLERROR</literal></term>
       <listitem>
        <para>
@@ -4867,7 +4830,7 @@ EXEC SQL WHENEVER <replaceable>condition</replaceable> <replaceable>action</repl
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-whenever-sqlwarning">
+     <varlistentry>
       <term><literal>SQLWARNING</literal></term>
       <listitem>
        <para>
@@ -4877,7 +4840,7 @@ EXEC SQL WHENEVER <replaceable>condition</replaceable> <replaceable>action</repl
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-whenever-not-found">
+     <varlistentry>
       <term><literal>NOT FOUND</literal></term>
       <listitem>
        <para>
@@ -4894,7 +4857,7 @@ EXEC SQL WHENEVER <replaceable>condition</replaceable> <replaceable>action</repl
     <replaceable>action</replaceable> can be one of the following:
 
     <variablelist>
-     <varlistentry id="ecpg-whenever-continue">
+     <varlistentry>
       <term><literal>CONTINUE</literal></term>
       <listitem>
        <para>
@@ -4904,7 +4867,7 @@ EXEC SQL WHENEVER <replaceable>condition</replaceable> <replaceable>action</repl
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-whenever-goto">
+     <varlistentry>
       <term><literal>GOTO <replaceable>label</replaceable></literal></term>
       <term><literal>GO TO <replaceable>label</replaceable></literal></term>
       <listitem>
@@ -4915,7 +4878,7 @@ EXEC SQL WHENEVER <replaceable>condition</replaceable> <replaceable>action</repl
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-whenever-sqlprint">
+     <varlistentry>
       <term><literal>SQLPRINT</literal></term>
       <listitem>
        <para>
@@ -4926,7 +4889,7 @@ EXEC SQL WHENEVER <replaceable>condition</replaceable> <replaceable>action</repl
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-whenever-stop">
+     <varlistentry>
       <term><literal>STOP</literal></term>
       <listitem>
        <para>
@@ -4936,7 +4899,7 @@ EXEC SQL WHENEVER <replaceable>condition</replaceable> <replaceable>action</repl
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-whenever-do-break">
+     <varlistentry>
       <term><literal>DO BREAK</literal></term>
       <listitem>
        <para>
@@ -4946,7 +4909,7 @@ EXEC SQL WHENEVER <replaceable>condition</replaceable> <replaceable>action</repl
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-whenever-do-continue">
+     <varlistentry>
       <term><literal>DO CONTINUE</literal></term>
       <listitem>
        <para>
@@ -4957,7 +4920,7 @@ EXEC SQL WHENEVER <replaceable>condition</replaceable> <replaceable>action</repl
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-whenever-call">
+     <varlistentry>
       <term><literal>CALL <replaceable>name</replaceable> (<replaceable>args</replaceable>)</literal></term>
       <term><literal>DO <replaceable>name</replaceable> (<replaceable>args</replaceable>)</literal></term>
       <listitem>
@@ -5231,7 +5194,7 @@ sqlstate: 42P01
     These are the assigned <literal>SQLCODE</literal> values:
 
     <variablelist>
-     <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-no-error">
+     <varlistentry>
       <term>0 (<symbol>ECPG_NO_ERROR</symbol>)</term>
       <listitem>
        <para>
@@ -5240,7 +5203,7 @@ sqlstate: 42P01
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-not-found">
+    <varlistentry>
      <term>100 (<symbol>ECPG_NOT_FOUND</symbol>)</term>
      <listitem>
       <para>
@@ -5267,7 +5230,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-     <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-out-of-memory">
+     <varlistentry>
       <term>-12 (<symbol>ECPG_OUT_OF_MEMORY</symbol>)</term>
       <listitem>
        <para>
@@ -5278,7 +5241,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-unsupported">
+    <varlistentry>
      <term>-200 (<symbol>ECPG_UNSUPPORTED</symbol>)</term>
      <listitem>
       <para>
@@ -5290,7 +5253,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-too-many-arguments">
+    <varlistentry>
      <term>-201 (<symbol>ECPG_TOO_MANY_ARGUMENTS</symbol>)</term>
      <listitem>
       <para>
@@ -5300,7 +5263,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-too-few-arguments">
+    <varlistentry>
      <term>-202 (<symbol>ECPG_TOO_FEW_ARGUMENTS</symbol>)</term>
      <listitem>
       <para>
@@ -5310,7 +5273,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-too-many-matches">
+    <varlistentry>
      <term>-203 (<symbol>ECPG_TOO_MANY_MATCHES</symbol>)</term>
      <listitem>
       <para>
@@ -5321,7 +5284,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-int-format">
+    <varlistentry>
      <term>-204 (<symbol>ECPG_INT_FORMAT</symbol>)</term>
      <listitem>
       <para>
@@ -5334,7 +5297,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-uint-format">
+    <varlistentry>
      <term>-205 (<symbol>ECPG_UINT_FORMAT</symbol>)</term>
      <listitem>
       <para>
@@ -5347,7 +5310,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-float-format">
+    <varlistentry>
      <term>-206 (<symbol>ECPG_FLOAT_FORMAT</symbol>)</term>
      <listitem>
       <para>
@@ -5360,7 +5323,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-numeric-format">
+    <varlistentry>
      <term>-207 (<symbol>ECPG_NUMERIC_FORMAT</symbol>)</term>
      <listitem>
       <para>
@@ -5372,7 +5335,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-interval-format">
+    <varlistentry>
      <term>-208 (<symbol>ECPG_INTERVAL_FORMAT</symbol>)</term>
      <listitem>
       <para>
@@ -5384,7 +5347,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-date-format">
+    <varlistentry>
      <term>-209 (<symbol>ECPG_DATE_FORMAT</symbol>)</term>
      <listitem>
       <para>
@@ -5396,7 +5359,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-timestamp-format">
+    <varlistentry>
      <term>-210 (<symbol>ECPG_TIMESTAMP_FORMAT</symbol>)</term>
      <listitem>
       <para>
@@ -5408,7 +5371,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-convert-bool">
+    <varlistentry>
      <term>-211 (<symbol>ECPG_CONVERT_BOOL</symbol>)</term>
      <listitem>
       <para>
@@ -5419,7 +5382,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-empty">
+    <varlistentry>
      <term>-212 (<symbol>ECPG_EMPTY</symbol>)</term>
      <listitem>
       <para>
@@ -5431,7 +5394,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-missing-indicator">
+    <varlistentry>
      <term>-213 (<symbol>ECPG_MISSING_INDICATOR</symbol>)</term>
      <listitem>
       <para>
@@ -5441,7 +5404,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-no-array">
+    <varlistentry>
      <term>-214 (<symbol>ECPG_NO_ARRAY</symbol>)</term>
      <listitem>
       <para>
@@ -5451,7 +5414,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-data-not-array">
+    <varlistentry>
      <term>-215 (<symbol>ECPG_DATA_NOT_ARRAY</symbol>)</term>
      <listitem>
       <para>
@@ -5461,7 +5424,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-array-insert">
+    <varlistentry>
      <term>-216 (<symbol>ECPG_ARRAY_INSERT</symbol>)</term>
      <listitem>
       <para>
@@ -5471,7 +5434,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-no-conn">
+    <varlistentry>
      <term>-220 (<symbol>ECPG_NO_CONN</symbol>)</term>
      <listitem>
       <para>
@@ -5481,7 +5444,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-not-conn">
+    <varlistentry>
      <term>-221 (<symbol>ECPG_NOT_CONN</symbol>)</term>
      <listitem>
       <para>
@@ -5491,7 +5454,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-invalid-stmt">
+    <varlistentry>
      <term>-230 (<symbol>ECPG_INVALID_STMT</symbol>)</term>
      <listitem>
       <para>
@@ -5501,7 +5464,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-informix-duplicate-key">
+    <varlistentry>
      <term>-239 (<symbol>ECPG_INFORMIX_DUPLICATE_KEY</symbol>)</term>
      <listitem>
       <para>
@@ -5511,7 +5474,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-unknown-descriptor">
+    <varlistentry>
      <term>-240 (<symbol>ECPG_UNKNOWN_DESCRIPTOR</symbol>)</term>
      <listitem>
       <para>
@@ -5521,7 +5484,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-invalid-descriptor-index">
+    <varlistentry>
      <term>-241 (<symbol>ECPG_INVALID_DESCRIPTOR_INDEX</symbol>)</term>
      <listitem>
       <para>
@@ -5531,7 +5494,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-unknown-descriptor-item">
+    <varlistentry>
      <term>-242 (<symbol>ECPG_UNKNOWN_DESCRIPTOR_ITEM</symbol>)</term>
      <listitem>
       <para>
@@ -5541,7 +5504,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-var-not-numeric">
+    <varlistentry>
      <term>-243 (<symbol>ECPG_VAR_NOT_NUMERIC</symbol>)</term>
      <listitem>
       <para>
@@ -5552,7 +5515,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-var-not-char">
+    <varlistentry>
      <term>-244 (<symbol>ECPG_VAR_NOT_CHAR</symbol>)</term>
      <listitem>
       <para>
@@ -5563,7 +5526,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-informix-subselect-not-one">
+    <varlistentry>
      <term>-284 (<symbol>ECPG_INFORMIX_SUBSELECT_NOT_ONE</symbol>)</term>
      <listitem>
       <para>
@@ -5573,7 +5536,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-pgsql">
+    <varlistentry>
      <term>-400 (<symbol>ECPG_PGSQL</symbol>)</term>
      <listitem>
       <para>
@@ -5584,7 +5547,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-trans">
+    <varlistentry>
      <term>-401 (<symbol>ECPG_TRANS</symbol>)</term>
      <listitem>
       <para>
@@ -5595,7 +5558,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-connect">
+    <varlistentry>
      <term>-402 (<symbol>ECPG_CONNECT</symbol>)</term>
      <listitem>
       <para>
@@ -5605,7 +5568,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-duplicate-key">
+    <varlistentry>
      <term>-403 (<symbol>ECPG_DUPLICATE_KEY</symbol>)</term>
      <listitem>
       <para>
@@ -5615,7 +5578,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-subselect-not-one">
+    <varlistentry>
      <term>-404 (<symbol>ECPG_SUBSELECT_NOT_ONE</symbol>)</term>
      <listitem>
       <para>
@@ -5626,7 +5589,7 @@ while (1)
 
     <!-- currently not used by the code -->
 <!--
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-warning-unrecognized">
+    <varlistentry>
      <term>-600 (<symbol>ECPG_WARNING_UNRECOGNIZED</symbol>)</term>
      <listitem>
       <para>
@@ -5635,7 +5598,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-warning-query-ignored">
+    <varlistentry>
      <term>-601 (<symbol>ECPG_WARNING_QUERY_IGNORED</symbol>)</term>
      <listitem>
       <para>
@@ -5646,7 +5609,7 @@ while (1)
     </varlistentry>
 -->
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-warning-unknown-portal">
+    <varlistentry>
      <term>-602 (<symbol>ECPG_WARNING_UNKNOWN_PORTAL</symbol>)</term>
      <listitem>
       <para>
@@ -5655,7 +5618,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-warning-in-transaction">
+    <varlistentry>
      <term>-603 (<symbol>ECPG_WARNING_IN_TRANSACTION</symbol>)</term>
      <listitem>
       <para>
@@ -5664,7 +5627,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-warning-no-transaction">
+    <varlistentry>
      <term>-604 (<symbol>ECPG_WARNING_NO_TRANSACTION</symbol>)</term>
      <listitem>
       <para>
@@ -5673,7 +5636,7 @@ while (1)
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-sqlstate-sqlcode-ecpg-warning-portal-exists">
+    <varlistentry>
      <term>-605 (<symbol>ECPG_WARNING_PORTAL_EXISTS</symbol>)</term>
      <listitem>
       <para>
@@ -5804,7 +5767,7 @@ EXEC SQL UPDATE Tbl SET col = MYNUMBER;
    You can use the following directives to compile code sections conditionally:
 
    <variablelist>
-    <varlistentry id="ecpg-ifdef-ifdef">
+    <varlistentry>
      <term><literal>EXEC SQL ifdef <replaceable>name</replaceable>;</literal></term>
      <listitem>
      <para>
@@ -5815,7 +5778,7 @@ EXEC SQL UPDATE Tbl SET col = MYNUMBER;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-ifdef-ifndef">
+    <varlistentry>
      <term><literal>EXEC SQL ifndef <replaceable>name</replaceable>;</literal></term>
      <listitem>
      <para>
@@ -5826,7 +5789,7 @@ EXEC SQL UPDATE Tbl SET col = MYNUMBER;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-ifdef-elif">
+    <varlistentry>
      <term><literal>EXEC SQL elif <replaceable>name</replaceable>;</literal></term>
      <listitem>
      <para>
@@ -5843,7 +5806,7 @@ EXEC SQL UPDATE Tbl SET col = MYNUMBER;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-ifdef-else">
+    <varlistentry>
      <term><literal>EXEC SQL else;</literal></term>
      <listitem>
      <para>
@@ -5858,7 +5821,7 @@ EXEC SQL UPDATE Tbl SET col = MYNUMBER;
      </listitem>
     </varlistentry>
 
-    <varlistentry id="ecpg-ifdef-endif">
+    <varlistentry>
      <term><literal>EXEC SQL endif;</literal></term>
      <listitem>
      <para>
@@ -6305,7 +6268,7 @@ void TestCpp::test()
     (<filename>*.pgc</filename>), a header file, and a C++ file:
 
     <variablelist>
-     <varlistentry id="ecpg-cpp-and-c-test-mod-pgc">
+     <varlistentry>
       <term><filename>test_mod.pgc</filename></term>
       <listitem>
        <para>
@@ -6345,7 +6308,7 @@ db_disconnect()
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-cpp-and-c-test-mod-h">
+     <varlistentry>
       <term><filename>test_mod.h</filename></term>
       <listitem>
        <para>
@@ -6372,7 +6335,7 @@ void db_disconnect();
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-cpp-and-c-test-cpp-cpp">
+     <varlistentry>
       <term><filename>test_cpp.cpp</filename></term>
       <listitem>
        <para>
@@ -6494,7 +6457,7 @@ ALLOCATE DESCRIPTOR <replaceable class="parameter">name</replaceable>
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-allocate-descriptor-name">
+     <varlistentry>
       <term><replaceable class="parameter">name</replaceable></term>
       <listitem>
        <para>
@@ -6562,7 +6525,7 @@ DATABASE <replaceable>connection_target</replaceable>
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-connect-connection-target">
+     <varlistentry>
       <term><replaceable class="parameter">connection_target</replaceable></term>
       <listitem>
        <para>
@@ -6571,7 +6534,7 @@ DATABASE <replaceable>connection_target</replaceable>
         several forms.
 
         <variablelist>
-         <varlistentry id="ecpg-sql-connect-connection-target-database-name">
+         <varlistentry>
           <term>[ <replaceable>database_name</replaceable> ] [ <literal>@</literal><replaceable>host</replaceable> ] [ <literal>:</literal><replaceable>port</replaceable> ]</term>
           <listitem>
            <para>
@@ -6580,7 +6543,7 @@ DATABASE <replaceable>connection_target</replaceable>
           </listitem>
          </varlistentry>
 
-         <varlistentry id="ecpg-sql-connect-connection-target-unix-domain-sockets">
+         <varlistentry>
           <term><literal>unix:postgresql://</literal><replaceable>host</replaceable> [ <literal>:</literal><replaceable>port</replaceable> ] <literal>/</literal> [ <replaceable>database_name</replaceable> ] [ <literal>?</literal><replaceable>connection_option</replaceable> ]</term>
           <listitem>
            <para>
@@ -6589,7 +6552,7 @@ DATABASE <replaceable>connection_target</replaceable>
           </listitem>
          </varlistentry>
 
-         <varlistentry id="ecpg-sql-connect-connection-target-tcp-ip">
+         <varlistentry>
           <term><literal>tcp:postgresql://</literal><replaceable>host</replaceable> [ <literal>:</literal><replaceable>port</replaceable> ] <literal>/</literal> [ <replaceable>database_name</replaceable> ] [ <literal>?</literal><replaceable>connection_option</replaceable> ]</term>
           <listitem>
            <para>
@@ -6598,7 +6561,7 @@ DATABASE <replaceable>connection_target</replaceable>
           </listitem>
          </varlistentry>
 
-         <varlistentry id="ecpg-sql-connect-connection-target-constant">
+         <varlistentry>
           <term>SQL string constant</term>
           <listitem>
            <para>
@@ -6607,7 +6570,7 @@ DATABASE <replaceable>connection_target</replaceable>
           </listitem>
          </varlistentry>
 
-         <varlistentry id="ecpg-sql-connect-connection-target-host-variable">
+         <varlistentry>
           <term>host variable</term>
           <listitem>
            <para>
@@ -6622,7 +6585,7 @@ DATABASE <replaceable>connection_target</replaceable>
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-connect-connection-name">
+     <varlistentry>
       <term><replaceable class="parameter">connection_name</replaceable></term>
       <listitem>
        <para>
@@ -6633,7 +6596,7 @@ DATABASE <replaceable>connection_target</replaceable>
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-connect-connection-user">
+     <varlistentry>
       <term><replaceable class="parameter">connection_user</replaceable></term>
       <listitem>
        <para>
@@ -6654,7 +6617,7 @@ DATABASE <replaceable>connection_target</replaceable>
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-connect-default">
+     <varlistentry>
       <term><literal>DEFAULT</literal></term>
       <listitem>
        <para>
@@ -6779,7 +6742,7 @@ DEALLOCATE DESCRIPTOR <replaceable class="parameter">name</replaceable>
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-deallocate-descriptor-name">
+     <varlistentry>
       <term><replaceable class="parameter">name</replaceable></term>
       <listitem>
        <para>
@@ -6853,7 +6816,7 @@ DECLARE <replaceable class="parameter">cursor_name</replaceable> [ BINARY ] [ AS
     <title>Parameters</title>
     <variablelist>
 
-     <varlistentry id="ecpg-sql-declare-cursor-name">
+     <varlistentry>
       <term><replaceable class="parameter">cursor_name</replaceable></term>
       <listitem>
        <para>
@@ -6863,7 +6826,7 @@ DECLARE <replaceable class="parameter">cursor_name</replaceable> [ BINARY ] [ AS
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-declare-prepared-name">
+     <varlistentry>
       <term><replaceable class="parameter">prepared_name</replaceable></term>
       <listitem>
        <para>
@@ -6873,7 +6836,7 @@ DECLARE <replaceable class="parameter">cursor_name</replaceable> [ BINARY ] [ AS
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-declare-query">
+     <varlistentry>
       <term><replaceable class="parameter">query</replaceable></term>
       <listitem>
        <para>
@@ -6963,7 +6926,7 @@ EXEC SQL [ AT <replaceable class="parameter">connection_name</replaceable> ] DEC
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-declare-statement-connection-name">
+     <varlistentry>
       <term><replaceable class="parameter">connection_name</replaceable></term>
       <listitem>
        <para>
@@ -6977,7 +6940,7 @@ EXEC SQL [ AT <replaceable class="parameter">connection_name</replaceable> ] DEC
     </variablelist>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-declare-statement-statement-name">
+     <varlistentry>
       <term><replaceable class="parameter">statement_name</replaceable></term>
       <listitem>
        <para>
@@ -7057,7 +7020,7 @@ DESCRIBE [ OUTPUT ] <replaceable class="parameter">prepared_name</replaceable> I
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-describe-prepared-name">
+     <varlistentry>
       <term><replaceable class="parameter">prepared_name</replaceable></term>
       <listitem>
        <para>
@@ -7067,7 +7030,7 @@ DESCRIBE [ OUTPUT ] <replaceable class="parameter">prepared_name</replaceable> I
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-describe-descriptor-name">
+     <varlistentry>
       <term><replaceable class="parameter">descriptor_name</replaceable></term>
       <listitem>
        <para>
@@ -7077,7 +7040,7 @@ DESCRIBE [ OUTPUT ] <replaceable class="parameter">prepared_name</replaceable> I
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-describe-sqlda-name">
+     <varlistentry>
       <term><replaceable class="parameter">sqlda_name</replaceable></term>
       <listitem>
        <para>
@@ -7146,7 +7109,7 @@ DISCONNECT ALL
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-disconnect-connection-name">
+     <varlistentry>
       <term><replaceable class="parameter">connection_name</replaceable></term>
       <listitem>
        <para>
@@ -7156,7 +7119,7 @@ DISCONNECT ALL
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-disconnect-current">
+     <varlistentry>
       <term><literal>CURRENT</literal></term>
       <listitem>
        <para>
@@ -7169,7 +7132,7 @@ DISCONNECT ALL
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-disconnect-default">
+     <varlistentry>
       <term><literal>DEFAULT</literal></term>
       <listitem>
        <para>
@@ -7178,7 +7141,7 @@ DISCONNECT ALL
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-disconnect-all">
+     <varlistentry>
       <term><literal>ALL</literal></term>
       <listitem>
        <para>
@@ -7254,7 +7217,7 @@ EXECUTE IMMEDIATE <replaceable class="parameter">string</replaceable>
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-execute-immediate-string">
+     <varlistentry>
       <term><replaceable class="parameter">string</replaceable></term>
       <listitem>
        <para>
@@ -7352,7 +7315,7 @@ GET DESCRIPTOR <replaceable class="parameter">descriptor_name</replaceable> VALU
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-get-descriptor-descriptor-name">
+     <varlistentry>
       <term><replaceable class="parameter">descriptor_name</replaceable></term>
       <listitem>
        <para>
@@ -7361,7 +7324,7 @@ GET DESCRIPTOR <replaceable class="parameter">descriptor_name</replaceable> VALU
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-get-descriptor-descriptor-header-item">
+     <varlistentry>
       <term><replaceable class="parameter">descriptor_header_item</replaceable></term>
       <listitem>
        <para>
@@ -7372,7 +7335,7 @@ GET DESCRIPTOR <replaceable class="parameter">descriptor_name</replaceable> VALU
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-get-descriptor-column-number">
+     <varlistentry>
       <term><replaceable class="parameter">column_number</replaceable></term>
       <listitem>
        <para>
@@ -7382,7 +7345,7 @@ GET DESCRIPTOR <replaceable class="parameter">descriptor_name</replaceable> VALU
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-get-descriptor-descriptor-item">
+     <varlistentry>
       <term><replaceable class="parameter">descriptor_item</replaceable></term>
       <listitem>
        <para>
@@ -7393,7 +7356,7 @@ GET DESCRIPTOR <replaceable class="parameter">descriptor_name</replaceable> VALU
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-get-descriptor-cvariable">
+     <varlistentry>
       <term><replaceable class="parameter">cvariable</replaceable></term>
       <listitem>
        <para>
@@ -7533,7 +7496,7 @@ OPEN <replaceable class="parameter">cursor_name</replaceable> USING SQL DESCRIPT
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-open-cursor-name">
+     <varlistentry>
       <term><replaceable class="parameter">cursor_name</replaceable></term>
       <listitem>
        <para>
@@ -7543,7 +7506,7 @@ OPEN <replaceable class="parameter">cursor_name</replaceable> USING SQL DESCRIPT
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-open-value">
+     <varlistentry>
       <term><replaceable class="parameter">value</replaceable></term>
       <listitem>
        <para>
@@ -7554,7 +7517,7 @@ OPEN <replaceable class="parameter">cursor_name</replaceable> USING SQL DESCRIPT
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-open-descriptor-name">
+     <varlistentry>
       <term><replaceable class="parameter">descriptor_name</replaceable></term>
       <listitem>
        <para>
@@ -7624,7 +7587,7 @@ PREPARE <replaceable class="parameter">prepared_name</replaceable> FROM <replace
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-prepare-prepared-name">
+     <varlistentry>
       <term><replaceable class="parameter">prepared_name</replaceable></term>
       <listitem>
        <para>
@@ -7633,7 +7596,7 @@ PREPARE <replaceable class="parameter">prepared_name</replaceable> FROM <replace
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-prepare-string">
+     <varlistentry>
       <term><replaceable class="parameter">string</replaceable></term>
       <listitem>
        <para>
@@ -7760,7 +7723,7 @@ SET CONNECTION [ TO | = ] <replaceable class="parameter">connection_name</replac
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-set-connection-connection-name">
+     <varlistentry>
       <term><replaceable class="parameter">connection_name</replaceable></term>
       <listitem>
        <para>
@@ -7770,7 +7733,7 @@ SET CONNECTION [ TO | = ] <replaceable class="parameter">connection_name</replac
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-set-connection-default">
+     <varlistentry>
       <term><literal>DEFAULT</literal></term>
       <listitem>
        <para>
@@ -7842,7 +7805,7 @@ SET DESCRIPTOR <replaceable class="parameter">descriptor_name</replaceable> VALU
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-set-descriptor-descriptor-name">
+     <varlistentry>
       <term><replaceable class="parameter">descriptor_name</replaceable></term>
       <listitem>
        <para>
@@ -7851,7 +7814,7 @@ SET DESCRIPTOR <replaceable class="parameter">descriptor_name</replaceable> VALU
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-set-descriptor-descriptor-header-item">
+     <varlistentry>
       <term><replaceable class="parameter">descriptor_header_item</replaceable></term>
       <listitem>
        <para>
@@ -7862,7 +7825,7 @@ SET DESCRIPTOR <replaceable class="parameter">descriptor_name</replaceable> VALU
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-set-descriptor-number">
+     <varlistentry>
       <term><replaceable class="parameter">number</replaceable></term>
       <listitem>
        <para>
@@ -7872,7 +7835,7 @@ SET DESCRIPTOR <replaceable class="parameter">descriptor_name</replaceable> VALU
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-set-descriptor-descriptor-item">
+     <varlistentry>
       <term><replaceable class="parameter">descriptor_item</replaceable></term>
       <listitem>
        <para>
@@ -7883,7 +7846,7 @@ SET DESCRIPTOR <replaceable class="parameter">descriptor_name</replaceable> VALU
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-set-descriptor-value">
+     <varlistentry>
       <term><replaceable class="parameter">value</replaceable></term>
       <listitem>
        <para>
@@ -7955,7 +7918,7 @@ TYPE <replaceable class="parameter">type_name</replaceable> IS <replaceable clas
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-type-type-name">
+     <varlistentry>
       <term><replaceable class="parameter">type_name</replaceable></term>
       <listitem>
        <para>
@@ -7964,7 +7927,7 @@ TYPE <replaceable class="parameter">type_name</replaceable> IS <replaceable clas
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-type-ctype">
+     <varlistentry>
       <term><replaceable class="parameter">ctype</replaceable></term>
       <listitem>
        <para>
@@ -8089,7 +8052,7 @@ VAR <replaceable>varname</replaceable> IS <replaceable>ctype</replaceable>
     <title>Parameters</title>
 
     <variablelist>
-     <varlistentry id="ecpg-sql-var-varname">
+     <varlistentry>
       <term><replaceable class="parameter">varname</replaceable></term>
       <listitem>
        <para>
@@ -8098,7 +8061,7 @@ VAR <replaceable>varname</replaceable> IS <replaceable>ctype</replaceable>
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-sql-var-ctype">
+     <varlistentry>
       <term><replaceable class="parameter">ctype</replaceable></term>
       <listitem>
        <para>
@@ -8296,7 +8259,7 @@ EXEC SQL FETCH MYCUR INTO :userid;
    <title>Additional/Missing Embedded SQL Statements</title>
    <para>
     <variablelist>
-     <varlistentry id="ecpg-informix-statements-close-database">
+     <varlistentry>
       <term><literal>CLOSE DATABASE</literal></term>
       <listitem>
        <para>
@@ -8309,7 +8272,7 @@ EXEC SQL CLOSE DATABASE;
        </para>
       </listitem>
      </varlistentry>
-     <varlistentry id="ecpg-informix-statements-free-cursor-name">
+     <varlistentry>
       <term><literal>FREE cursor_name</literal></term>
       <listitem>
        <para>
@@ -8322,7 +8285,7 @@ EXEC SQL CLOSE DATABASE;
        </para>
       </listitem>
      </varlistentry>
-     <varlistentry id="ecpg-informix-statements-free-statement-name">
+     <varlistentry>
       <term><literal>FREE statement_name</literal></term>
       <listitem>
        <para>
@@ -8382,7 +8345,7 @@ typedef struct sqlda_compat     sqlda_t;
     The global properties are:
     <variablelist>
 
-     <varlistentry id="ecpg-informix-sqlda-sqld">
+     <varlistentry>
      <term><literal>sqld</literal></term>
       <listitem>
        <para>
@@ -8391,7 +8354,7 @@ typedef struct sqlda_compat     sqlda_t;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-sqlvar">
+     <varlistentry>
      <term><literal>sqlvar</literal></term>
       <listitem>
        <para>
@@ -8400,7 +8363,7 @@ typedef struct sqlda_compat     sqlda_t;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-desc-name">
+     <varlistentry>
      <term><literal>desc_name</literal></term>
       <listitem>
        <para>
@@ -8409,7 +8372,7 @@ typedef struct sqlda_compat     sqlda_t;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-desc-occ">
+     <varlistentry>
      <term><literal>desc_occ</literal></term>
       <listitem>
        <para>
@@ -8418,7 +8381,7 @@ typedef struct sqlda_compat     sqlda_t;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-desc-next">
+     <varlistentry>
      <term><literal>desc_next</literal></term>
       <listitem>
        <para>
@@ -8427,7 +8390,7 @@ typedef struct sqlda_compat     sqlda_t;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-reserved">
+     <varlistentry>
      <term><literal>reserved</literal></term>
       <listitem>
        <para>
@@ -8442,7 +8405,7 @@ typedef struct sqlda_compat     sqlda_t;
 
     <variablelist>
 
-     <varlistentry id="ecpg-informix-sqlda-sqltype">
+     <varlistentry>
      <term><literal>sqltype</literal></term>
       <listitem>
        <para>
@@ -8451,7 +8414,7 @@ typedef struct sqlda_compat     sqlda_t;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-sqllen">
+     <varlistentry>
      <term><literal>sqllen</literal></term>
       <listitem>
        <para>
@@ -8460,7 +8423,7 @@ typedef struct sqlda_compat     sqlda_t;
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-sqldata">
+     <varlistentry>
      <term><literal>sqldata</literal></term>
       <listitem>
        <para>
@@ -8481,7 +8444,7 @@ switch (sqldata->sqlvar[i].sqltype)
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-sqlind">
+     <varlistentry>
      <term><literal>sqlind</literal></term>
       <listitem>
        <para>
@@ -8497,7 +8460,7 @@ if (*(int2 *)sqldata->sqlvar[i].sqlind != 0)
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-sqlname">
+     <varlistentry>
      <term><literal>sqlname</literal></term>
       <listitem>
        <para>
@@ -8506,7 +8469,7 @@ if (*(int2 *)sqldata->sqlvar[i].sqlind != 0)
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-sqlformat">
+     <varlistentry>
      <term><literal>sqlformat</literal></term>
       <listitem>
        <para>
@@ -8515,7 +8478,7 @@ if (*(int2 *)sqldata->sqlvar[i].sqlind != 0)
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-sqlitype">
+     <varlistentry>
      <term><literal>sqlitype</literal></term>
       <listitem>
        <para>
@@ -8526,7 +8489,7 @@ if (*(int2 *)sqldata->sqlvar[i].sqlind != 0)
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-sqlilen">
+     <varlistentry>
      <term><literal>sqlilen</literal></term>
       <listitem>
        <para>
@@ -8535,7 +8498,7 @@ if (*(int2 *)sqldata->sqlvar[i].sqlind != 0)
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-sqlxid">
+     <varlistentry>
      <term><literal>sqlxid</literal></term>
       <listitem>
        <para>
@@ -8544,7 +8507,7 @@ if (*(int2 *)sqldata->sqlvar[i].sqlind != 0)
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-sqltypename">
+     <varlistentry>
      <term><literal>sqltypename</literal></term>
      <term><literal>sqltypelen</literal></term>
      <term><literal>sqlownerlen</literal></term>
@@ -8560,7 +8523,7 @@ if (*(int2 *)sqldata->sqlvar[i].sqlind != 0)
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-sqlda-sqlilongdata">
+     <varlistentry>
      <term><literal>sqlilongdata</literal></term>
       <listitem>
        <para>
@@ -8615,7 +8578,7 @@ EXEC SQL INCLUDE sqlda.h;
    <title>Additional Functions</title>
    <para>
     <variablelist>
-     <varlistentry id="ecpg-informix-functions-decadd">
+     <varlistentry>
       <term><function>decadd</function></term>
       <listitem>
        <para>
@@ -8635,7 +8598,7 @@ int decadd(decimal *arg1, decimal *arg2, decimal *sum);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-deccmp">
+     <varlistentry>
       <term><function>deccmp</function></term>
       <listitem>
        <para>
@@ -8670,7 +8633,7 @@ int deccmp(decimal *arg1, decimal *arg2);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-deccopy">
+     <varlistentry>
       <term><function>deccopy</function></term>
       <listitem>
        <para>
@@ -8686,7 +8649,7 @@ void deccopy(decimal *src, decimal *target);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-deccvasc">
+     <varlistentry>
       <term><function>deccvasc</function></term>
       <listitem>
        <para>
@@ -8719,7 +8682,7 @@ int deccvasc(char *cp, int len, decimal *np);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-deccvdbl">
+     <varlistentry>
       <term><function>deccvdbl</function></term>
       <listitem>
        <para>
@@ -8739,7 +8702,7 @@ int deccvdbl(double dbl, decimal *np);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-deccvint">
+     <varlistentry>
       <term><function>deccvint</function></term>
       <listitem>
        <para>
@@ -8759,7 +8722,7 @@ int deccvint(int in, decimal *np);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-deccvlong">
+     <varlistentry>
       <term><function>deccvlong</function></term>
       <listitem>
        <para>
@@ -8779,7 +8742,7 @@ int deccvlong(long lng, decimal *np);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-decdiv">
+     <varlistentry>
       <term><function>decdiv</function></term>
       <listitem>
        <para>
@@ -8803,7 +8766,7 @@ int decdiv(decimal *n1, decimal *n2, decimal *result);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-decmul">
+     <varlistentry>
       <term><function>decmul</function></term>
       <listitem>
        <para>
@@ -8825,7 +8788,7 @@ int decmul(decimal *n1, decimal *n2, decimal *result);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-decsub">
+     <varlistentry>
       <term><function>decsub</function></term>
       <listitem>
        <para>
@@ -8847,7 +8810,7 @@ int decsub(decimal *n1, decimal *n2, decimal *result);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-dectoasc">
+     <varlistentry>
       <term><function>dectoasc</function></term>
       <listitem>
        <para>
@@ -8877,7 +8840,7 @@ int dectoasc(decimal *np, char *cp, int len, int right)
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-dectodbl">
+     <varlistentry>
       <term><function>dectodbl</function></term>
       <listitem>
        <para>
@@ -8896,7 +8859,7 @@ int dectodbl(decimal *np, double *dblp);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-dectoint">
+     <varlistentry>
       <term><function>dectoint</function></term>
       <listitem>
        <para>
@@ -8922,7 +8885,7 @@ int dectoint(decimal *np, int *ip);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-dectolong">
+     <varlistentry>
       <term><function>dectolong</function></term>
       <listitem>
        <para>
@@ -8949,7 +8912,7 @@ int dectolong(decimal *np, long *lngp);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rdatestr">
+     <varlistentry>
       <term><function>rdatestr</function></term>
       <listitem>
        <para>
@@ -8976,7 +8939,7 @@ int rdatestr(date d, char *str);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rstrdate">
+     <varlistentry>
       <term><function>rstrdate</function></term>
       <listitem>
        <para>
@@ -9000,7 +8963,7 @@ int rstrdate(char *str, date *d);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rtoday">
+     <varlistentry>
       <term><function>rtoday</function></term>
       <listitem>
        <para>
@@ -9018,7 +8981,7 @@ void rtoday(date *d);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rjulmdy">
+     <varlistentry>
       <term><function>rjulmdy</function></term>
       <listitem>
        <para>
@@ -9043,7 +9006,7 @@ int rjulmdy(date d, short mdy[3]);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rdefmtdate">
+     <varlistentry>
       <term><function>rdefmtdate</function></term>
       <listitem>
        <para>
@@ -9113,7 +9076,7 @@ int rdefmtdate(date *d, char *fmt, char *str);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rfmtdate">
+     <varlistentry>
       <term><function>rfmtdate</function></term>
       <listitem>
        <para>
@@ -9136,7 +9099,7 @@ int rfmtdate(date d, char *fmt, char *str);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rmdyjul">
+     <varlistentry>
       <term><function>rmdyjul</function></term>
       <listitem>
        <para>
@@ -9159,7 +9122,7 @@ int rmdyjul(short mdy[3], date *d);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rdayofweek">
+     <varlistentry>
       <term><function>rdayofweek</function></term>
       <listitem>
        <para>
@@ -9215,7 +9178,7 @@ int rdayofweek(date d);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-dtcurrent">
+     <varlistentry>
       <term><function>dtcurrent</function></term>
       <listitem>
        <para>
@@ -9229,7 +9192,7 @@ void dtcurrent(timestamp *ts);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-dtcvasc">
+     <varlistentry>
       <term><function>dtcvasc</function></term>
       <listitem>
        <para>
@@ -9254,7 +9217,7 @@ int dtcvasc(char *str, timestamp *ts);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-dtcvfmtasc">
+     <varlistentry>
       <term><function>dtcvfmtasc</function></term>
       <listitem>
        <para>
@@ -9280,7 +9243,7 @@ dtcvfmtasc(char *inbuf, char *fmtstr, timestamp *dtvalue)
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-dtsub">
+     <varlistentry>
       <term><function>dtsub</function></term>
       <listitem>
        <para>
@@ -9301,7 +9264,7 @@ int dtsub(timestamp *ts1, timestamp *ts2, interval *iv);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-dttoasc">
+     <varlistentry>
       <term><function>dttoasc</function></term>
       <listitem>
        <para>
@@ -9322,7 +9285,7 @@ int dttoasc(timestamp *ts, char *output);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-dttofmtasc">
+     <varlistentry>
       <term><function>dttofmtasc</function></term>
       <listitem>
        <para>
@@ -9348,7 +9311,7 @@ int dttofmtasc(timestamp *ts, char *output, int str_len, char *fmtstr);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-intoasc">
+     <varlistentry>
       <term><function>intoasc</function></term>
       <listitem>
        <para>
@@ -9369,7 +9332,7 @@ int intoasc(interval *i, char *str);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rfmtlong">
+     <varlistentry>
       <term><function>rfmtlong</function></term>
       <listitem>
        <para>
@@ -9455,7 +9418,7 @@ int rfmtlong(long lng_val, char *fmt, char *outbuf);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rupshift">
+     <varlistentry>
       <term><function>rupshift</function></term>
       <listitem>
        <para>
@@ -9469,7 +9432,7 @@ void rupshift(char *str);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-byleng">
+     <varlistentry>
       <term><function>byleng</function></term>
       <listitem>
        <para>
@@ -9486,7 +9449,7 @@ int byleng(char *str, int len);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-ldchar">
+     <varlistentry>
       <term><function>ldchar</function></term>
       <listitem>
        <para>
@@ -9505,7 +9468,7 @@ void ldchar(char *src, int len, char *dest);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rgetmsg">
+     <varlistentry>
       <term><function>rgetmsg</function></term>
       <listitem>
        <para>
@@ -9517,7 +9480,7 @@ int rgetmsg(int msgnum, char *s, int maxsize);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rtypalign">
+     <varlistentry>
       <term><function>rtypalign</function></term>
       <listitem>
        <para>
@@ -9529,7 +9492,7 @@ int rtypalign(int offset, int type);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rtypmsize">
+     <varlistentry>
       <term><function>rtypmsize</function></term>
       <listitem>
        <para>
@@ -9541,7 +9504,7 @@ int rtypmsize(int type, int len);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-rtypwidth">
+     <varlistentry>
       <term><function>rtypwidth</function></term>
       <listitem>
        <para>
@@ -9637,7 +9600,7 @@ rsetnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-functions-risnull">
+     <varlistentry>
       <term><function>risnull</function></term>
       <listitem>
        <para>
@@ -9679,7 +9642,7 @@ risnull(CINTTYPE, (char *) &i);
     however rely on the fact all of them are defined to represent negative
     values.
     <variablelist>
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-num-overflow">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_NUM_OVERFLOW</literal></term>
       <listitem>
        <para>
@@ -9690,7 +9653,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-num-underflow">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_NUM_UNDERFLOW</literal></term>
       <listitem>
        <para>
@@ -9700,7 +9663,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-divide-zero">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_DIVIDE_ZERO</literal></term>
       <listitem>
        <para>
@@ -9710,7 +9673,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-bad-year">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_BAD_YEAR</literal></term>
       <listitem>
        <para>
@@ -9721,7 +9684,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-bad-month">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_BAD_MONTH</literal></term>
       <listitem>
        <para>
@@ -9732,7 +9695,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-bad-day">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_BAD_DAY</literal></term>
       <listitem>
        <para>
@@ -9743,7 +9706,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-enoshortdate">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_ENOSHORTDATE</literal></term>
       <listitem>
        <para>
@@ -9754,7 +9717,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-date-convert">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_DATE_CONVERT</literal></term>
       <listitem>
        <para>
@@ -9765,7 +9728,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-out-of-memory">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_OUT_OF_MEMORY</literal></term>
       <listitem>
        <para>
@@ -9776,7 +9739,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-enotdmy">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_ENOTDMY</literal></term>
       <listitem>
        <para>
@@ -9787,7 +9750,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-bad-numeric">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_BAD_NUMERIC</literal></term>
       <listitem>
        <para>
@@ -9800,7 +9763,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-bad-exponent">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_BAD_EXPONENT</literal></term>
       <listitem>
        <para>
@@ -9811,7 +9774,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-bad-date">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_BAD_DATE</literal></term>
       <listitem>
        <para>
@@ -9822,7 +9785,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-informix-constants-ecpg-informix-extra-chars">
+     <varlistentry>
       <term><literal>ECPG_INFORMIX_EXTRA_CHARS</literal></term>
       <listitem>
        <para>
@@ -9917,7 +9880,7 @@ risnull(CINTTYPE, (char *) &i);
     The arguments are:
 
     <variablelist>
-     <varlistentry id="ecpg-develop-line-number">
+     <varlistentry>
       <term>A line number</term>
       <listitem>
        <para>
@@ -9927,7 +9890,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-develop-string">
+     <varlistentry>
       <term>A string</term>
       <listitem>
        <para>
@@ -9940,7 +9903,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-develop-input-variables">
+     <varlistentry>
       <term>Input variables</term>
       <listitem>
        <para>
@@ -9949,7 +9912,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-develop-ecpgt-eoit">
+     <varlistentry>
       <term><parameter>ECPGt_EOIT</parameter></term>
       <listitem>
        <para>
@@ -9959,7 +9922,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-     <varlistentry id="ecpg-develop-output-variables">
+     <varlistentry>
       <term>Output variables</term>
       <listitem>
        <para>
@@ -9969,7 +9932,7 @@ risnull(CINTTYPE, (char *) &i);
       </listitem>
      </varlistentry>
 
-      <varlistentry id="ecpg-develop-ecpgt-eort">
+      <varlistentry>
        <term><parameter>ECPGt_EORT</parameter></term>
        <listitem>
        <para>

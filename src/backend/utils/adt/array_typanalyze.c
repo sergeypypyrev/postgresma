@@ -3,7 +3,7 @@
  * array_typanalyze.c
  *	  Functions for gathering statistics from array columns
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -362,7 +362,7 @@ compute_array_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			/* Lookup current element in hashtable, adding it if new */
 			elem_value = elem_values[j];
 			item = (TrackItem *) hash_search(elements_tab,
-											 &elem_value,
+											 (const void *) &elem_value,
 											 HASH_ENTER, &found);
 
 			if (found)
@@ -541,12 +541,12 @@ compute_array_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			 */
 			for (i = 0; i < num_mcelem; i++)
 			{
-				TrackItem  *titem = sort_table[i];
+				TrackItem  *item = sort_table[i];
 
-				mcelem_values[i] = datumCopy(titem->key,
+				mcelem_values[i] = datumCopy(item->key,
 											 extra_data->typbyval,
 											 extra_data->typlen);
-				mcelem_freqs[i] = (double) titem->frequency /
+				mcelem_freqs[i] = (double) item->frequency /
 					(double) nonnull_cnt;
 			}
 			mcelem_freqs[i++] = (double) minfreq / (double) nonnull_cnt;
@@ -690,7 +690,7 @@ prune_element_hashtable(HTAB *elements_tab, int b_current)
 		{
 			Datum		value = item->key;
 
-			if (hash_search(elements_tab, &item->key,
+			if (hash_search(elements_tab, (const void *) &item->key,
 							HASH_REMOVE, NULL) == NULL)
 				elog(ERROR, "hash table corrupted");
 			/* We should free memory if element is not passed by value */

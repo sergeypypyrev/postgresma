@@ -8,7 +8,7 @@
  * file contains support routines that are used by the library-specific
  * implementations such as fe-secure-openssl.c.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -96,7 +96,8 @@ pq_verify_peer_name_matches_certificate_name(PGconn *conn,
 
 	if (!(host && host[0] != '\0'))
 	{
-		libpq_append_conn_error(conn, "host name must be specified");
+		appendPQExpBufferStr(&conn->errorMessage,
+							 libpq_gettext("host name must be specified\n"));
 		return -1;
 	}
 
@@ -107,7 +108,8 @@ pq_verify_peer_name_matches_certificate_name(PGconn *conn,
 	name = malloc(namelen + 1);
 	if (name == NULL)
 	{
-		libpq_append_conn_error(conn, "out of memory");
+		appendPQExpBufferStr(&conn->errorMessage,
+							 libpq_gettext("out of memory\n"));
 		return -1;
 	}
 	memcpy(name, namedata, namelen);
@@ -120,7 +122,8 @@ pq_verify_peer_name_matches_certificate_name(PGconn *conn,
 	if (namelen != strlen(name))
 	{
 		free(name);
-		libpq_append_conn_error(conn, "SSL certificate's name contains embedded null");
+		appendPQExpBufferStr(&conn->errorMessage,
+							 libpq_gettext("SSL certificate's name contains embedded null\n"));
 		return -1;
 	}
 
@@ -170,7 +173,8 @@ pq_verify_peer_name_matches_certificate_ip(PGconn *conn,
 
 	if (!(host && host[0] != '\0'))
 	{
-		libpq_append_conn_error(conn, "host name must be specified");
+		appendPQExpBufferStr(&conn->errorMessage,
+							 libpq_gettext("host name must be specified\n"));
 		return -1;
 	}
 
@@ -225,8 +229,9 @@ pq_verify_peer_name_matches_certificate_ip(PGconn *conn,
 		 * Not IPv4 or IPv6. We could ignore the field, but leniency seems
 		 * wrong given the subject matter.
 		 */
-		libpq_append_conn_error(conn, "certificate contains IP address with invalid length %zu",
-						  iplen);
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("certificate contains IP address with invalid length %lu\n"),
+						  (unsigned long) iplen);
 		return -1;
 	}
 
@@ -234,7 +239,8 @@ pq_verify_peer_name_matches_certificate_ip(PGconn *conn,
 	addrstr = pg_inet_net_ntop(family, ipdata, 8 * iplen, tmp, sizeof(tmp));
 	if (!addrstr)
 	{
-		libpq_append_conn_error(conn, "could not convert certificate's IP address to string: %s",
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("could not convert certificate's IP address to string: %s\n"),
 						  strerror_r(errno, sebuf, sizeof(sebuf)));
 		return -1;
 	}
@@ -266,7 +272,8 @@ pq_verify_peer_name_matches_certificate(PGconn *conn)
 	/* Check that we have a hostname to compare with. */
 	if (!(host && host[0] != '\0'))
 	{
-		libpq_append_conn_error(conn, "host name must be specified for a verified SSL connection");
+		appendPQExpBufferStr(&conn->errorMessage,
+							 libpq_gettext("host name must be specified for a verified SSL connection\n"));
 		return false;
 	}
 
@@ -283,25 +290,27 @@ pq_verify_peer_name_matches_certificate(PGconn *conn)
 		if (names_examined > 1)
 		{
 			appendPQExpBuffer(&conn->errorMessage,
-							  libpq_ngettext("server certificate for \"%s\" (and %d other name) does not match host name \"%s\"",
-											 "server certificate for \"%s\" (and %d other names) does not match host name \"%s\"",
+							  libpq_ngettext("server certificate for \"%s\" (and %d other name) does not match host name \"%s\"\n",
+											 "server certificate for \"%s\" (and %d other names) does not match host name \"%s\"\n",
 											 names_examined - 1),
 							  first_name, names_examined - 1, host);
-			appendPQExpBufferChar(&conn->errorMessage, '\n');
 		}
 		else if (names_examined == 1)
 		{
-			libpq_append_conn_error(conn, "server certificate for \"%s\" does not match host name \"%s\"",
+			appendPQExpBuffer(&conn->errorMessage,
+							  libpq_gettext("server certificate for \"%s\" does not match host name \"%s\"\n"),
 							  first_name, host);
 		}
 		else
 		{
-			libpq_append_conn_error(conn, "could not get server's host name from server certificate");
+			appendPQExpBufferStr(&conn->errorMessage,
+								 libpq_gettext("could not get server's host name from server certificate\n"));
 		}
 	}
 
 	/* clean up */
-	free(first_name);
+	if (first_name)
+		free(first_name);
 
 	return (rc == 1);
 }

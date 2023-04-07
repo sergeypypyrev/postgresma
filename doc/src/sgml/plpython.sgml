@@ -153,7 +153,7 @@ $$ LANGUAGE plpython3u;
    below.
   </para>
 
-  <sect2 id="plpython-data-type-mapping">
+  <sect2>
    <title>Data Type Mapping</title>
    <para>
     When a PL/Python function is called, its arguments are converted from
@@ -269,7 +269,7 @@ $$ LANGUAGE plpython3u;
    </para>
   </sect2>
 
-  <sect2 id="plpython-data-null">
+  <sect2>
    <title>Null, None</title>
   <para>
    If an SQL null value<indexterm><primary>null value</primary><secondary
@@ -369,7 +369,7 @@ SELECT return_str_arr();
   </para>
   </sect2>
 
-  <sect2 id="plpython-data-composite-types">
+  <sect2>
    <title>Composite Types</title>
   <para>
    Composite-type arguments are passed to the function as Python mappings. The
@@ -516,7 +516,7 @@ CALL python_triple(5, 10);
    </para>
   </sect2>
 
-  <sect2 id="plpython-data-set-returning-funcs">
+  <sect2>
    <title>Set-Returning Functions</title>
   <para>
    A <application>PL/Python</application> function can also return sets of
@@ -779,7 +779,7 @@ $$ LANGUAGE plpython3u;
    <literal>plpy.<replaceable>foo</replaceable></literal>.
   </para>
 
-  <sect2 id="plpython-database-access-funcs">
+  <sect2>
     <title>Database Access Functions</title>
 
   <para>
@@ -1115,7 +1115,7 @@ $$ LANGUAGE plpython3u;
    the form of explicit subtransactions.
   </para>
 
-  <sect2 id="plpython-subtransaction-context-managers">
+  <sect2>
    <title>Subtransaction Context Managers</title>
 
    <para>

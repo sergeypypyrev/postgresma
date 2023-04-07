@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/intarray.sgml -->
 
 <sect1 id="intarray" xreflabel="intarray">
- <title>intarray &mdash; manipulate arrays of integers</title>
+ <title>intarray</title>
 
  <indexterm zone="intarray">
   <primary>intarray</primary>
@@ -30,7 +30,7 @@
   on the current database.
  </para>
 
- <sect2 id="intarray-funcs-ops">
+ <sect2>
   <title><filename>intarray</filename> Functions and Operators</title>
 
   <para>
@@ -391,7 +391,7 @@
   </para>
  </sect2>
 
- <sect2 id="intarray-index">
+ <sect2>
   <title>Index Support</title>
 
   <para>
@@ -443,7 +443,7 @@
   </para>
  </sect2>
 
- <sect2 id="intarray-example">
+ <sect2>
   <title>Example</title>
 
 <programlisting>
@@ -464,7 +464,7 @@ SELECT message.mid FROM message WHERE message.sections @@ '1&amp;2'::query_int;
 </programlisting>
  </sect2>
 
- <sect2 id="intarray-benchmark">
+ <sect2>
   <title>Benchmark</title>
 
   <para>
@@ -488,7 +488,7 @@ psql -c "CREATE EXTENSION intarray" TEST
   </para>
  </sect2>
 
- <sect2 id="intarray-Authors">
+ <sect2>
   <title>Authors</title>
 
   <para>

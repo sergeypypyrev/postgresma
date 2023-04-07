@@ -1,4 +1,3 @@
-/exprparse.h
 /exprparse.c
 /exprscan.c
 /pgbench

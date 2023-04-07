@@ -4,7 +4,7 @@
  *	  Utility routines for the Postgres inverted index access method.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -56,7 +56,6 @@ ginhandler(PG_FUNCTION_ARGS)
 	amroutine->amcanparallel = false;
 	amroutine->amcaninclude = false;
 	amroutine->amusemaintenanceworkmem = true;
-	amroutine->amsummarizing = false;
 	amroutine->amparallelvacuumoptions =
 		VACUUM_OPTION_PARALLEL_BULKDEL | VACUUM_OPTION_PARALLEL_CLEANUP;
 	amroutine->amkeytype = InvalidOid;
@@ -561,7 +560,7 @@ ginExtractEntries(GinState *ginstate, OffsetNumber attnum,
 		arg.collation = ginstate->supportCollation[attnum - 1];
 		arg.haveDups = false;
 		qsort_arg(keydata, *nentries, sizeof(keyEntryData),
-				  cmpEntries, &arg);
+				  cmpEntries, (void *) &arg);
 
 		if (arg.haveDups)
 		{
@@ -689,7 +688,7 @@ ginUpdateStats(Relation index, const GinStatsData *stats, bool is_build)
 		XLogRecPtr	recptr;
 		ginxlogUpdateMeta data;
 
-		data.locator = index->rd_locator;
+		data.node = index->rd_node;
 		data.ntuples = 0;
 		data.newRightlink = data.prevTail = InvalidBlockNumber;
 		memcpy(&data.metadata, metadata, sizeof(GinMetaPageData));

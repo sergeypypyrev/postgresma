@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/seg.sgml -->
 
 <sect1 id="seg" xreflabel="seg">
- <title>seg &mdash; a datatype for line segments or floating point intervals</title>
+ <title>seg</title>
 
  <indexterm zone="seg">
   <primary>seg</primary>
@@ -20,7 +20,7 @@
   on the current database.
  </para>
 
- <sect2 id="seg-rationale">
+ <sect2>
   <title>Rationale</title>
 
   <para>
@@ -81,7 +81,7 @@ test=&gt; select '6.25 .. 6.50'::seg as "pH";
   </para>
  </sect2>
 
- <sect2 id="seg-syntax">
+ <sect2>
   <title>Syntax</title>
 
   <para>
@@ -220,7 +220,7 @@ test=&gt; select '6.25 .. 6.50'::seg as "pH";
 
  </sect2>
 
- <sect2 id="seg-precision">
+ <sect2>
   <title>Precision</title>
 
   <para>
@@ -239,7 +239,7 @@ test=&gt; select '6.25 .. 6.50'::seg as "pH";
   </para>
  </sect2>
 
- <sect2 id="seg-usage">
+ <sect2>
   <title>Usage</title>
 
   <para>
@@ -363,7 +363,7 @@ test=&gt; select '6.25 .. 6.50'::seg as "pH";
   </para>
  </sect2>
 
- <sect2 id="seg-notes">
+ <sect2>
   <title>Notes</title>
 
   <para>
@@ -392,7 +392,7 @@ postgres=&gt; select '10(+-)1'::seg as seg;
   </para>
  </sect2>
 
- <sect2 id="seg-credits">
+ <sect2>
   <title>Credits</title>
 
   <para>

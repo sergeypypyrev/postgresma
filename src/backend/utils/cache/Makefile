@@ -21,7 +21,7 @@ OBJS = \
 	partcache.o \
 	plancache.o \
 	relcache.o \
-	relfilenumbermap.o \
+	relfilenodemap.o \
 	relmapper.o \
 	spccache.o \
 	syscache.o \

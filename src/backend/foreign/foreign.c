@@ -3,7 +3,7 @@
  * foreign.c
  *		  support for foreign-data wrappers, servers and user mappings.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/backend/foreign/foreign.c
@@ -27,7 +27,6 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-#include "utils/varlena.h"
 
 
 /*
@@ -622,32 +621,25 @@ postgresql_fdw_validator(PG_FUNCTION_ARGS)
 		if (!is_conninfo_option(def->defname, catalog))
 		{
 			const struct ConnectionOption *opt;
-			const char *closest_match;
-			ClosestMatchState match_state;
-			bool		has_valid_options = false;
+			StringInfoData buf;
 
 			/*
 			 * Unknown option specified, complain about it. Provide a hint
-			 * with a valid option that looks similar, if there is one.
+			 * with list of valid options for the object.
 			 */
-			initClosestMatch(&match_state, def->defname, 4);
+			initStringInfo(&buf);
 			for (opt = libpq_conninfo_options; opt->optname; opt++)
-			{
 				if (catalog == opt->optcontext)
-				{
-					has_valid_options = true;
-					updateClosestMatch(&match_state, opt->optname);
-				}
-			}
+					appendStringInfo(&buf, "%s%s", (buf.len > 0) ? ", " : "",
+									 opt->optname);
 
-			closest_match = getClosestMatch(&match_state);
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("invalid option \"%s\"", def->defname),
-					 has_valid_options ? closest_match ?
-					 errhint("Perhaps you meant the option \"%s\".",
-							 closest_match) : 0 :
-					 errhint("There are no valid options in this context.")));
+					 buf.len > 0
+					 ? errhint("Valid options in this context are: %s",
+							   buf.data)
+					 : errhint("There are no valid options in this context.")));
 
 			PG_RETURN_BOOL(false);
 		}

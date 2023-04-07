@@ -3,7 +3,7 @@
  * pruneheap.c
  *	  heap page pruning and HOT-chain management code
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -49,7 +49,7 @@ typedef struct
 	bool		old_snap_used;
 
 	TransactionId new_prune_xid;	/* new prune hint value for page */
-	TransactionId snapshotConflictHorizon;	/* latest xid removed */
+	TransactionId latestRemovedXid; /* latest xid to be removed by this prune */
 	int			nredirected;	/* numbers of entries in arrays below */
 	int			ndead;
 	int			nunused;
@@ -295,7 +295,7 @@ heap_page_prune(Relation relation, Buffer buffer,
 	prstate.old_snap_xmin = old_snap_xmin;
 	prstate.old_snap_ts = old_snap_ts;
 	prstate.old_snap_used = false;
-	prstate.snapshotConflictHorizon = InvalidTransactionId;
+	prstate.latestRemovedXid = InvalidTransactionId;
 	prstate.nredirected = prstate.ndead = prstate.nunused = 0;
 	memset(prstate.marked, 0, sizeof(prstate.marked));
 
@@ -418,8 +418,7 @@ heap_page_prune(Relation relation, Buffer buffer,
 			xl_heap_prune xlrec;
 			XLogRecPtr	recptr;
 
-			xlrec.isCatalogRel = RelationIsAccessibleInLogicalDecoding(relation);
-			xlrec.snapshotConflictHorizon = prstate.snapshotConflictHorizon;
+			xlrec.latestRemovedXid = prstate.latestRemovedXid;
 			xlrec.nredirected = prstate.nredirected;
 			xlrec.ndead = prstate.ndead;
 
@@ -637,8 +636,8 @@ heap_prune_chain(Buffer buffer, OffsetNumber rootoffnum, PruneState *prstate)
 				!HeapTupleHeaderIsHotUpdated(htup))
 			{
 				heap_prune_record_unused(prstate, rootoffnum);
-				HeapTupleHeaderAdvanceConflictHorizon(htup,
-													  &prstate->snapshotConflictHorizon);
+				HeapTupleHeaderAdvanceLatestRemovedXid(htup,
+													   &prstate->latestRemovedXid);
 				ndeleted++;
 			}
 
@@ -774,8 +773,8 @@ heap_prune_chain(Buffer buffer, OffsetNumber rootoffnum, PruneState *prstate)
 		if (tupdead)
 		{
 			latestdead = offnum;
-			HeapTupleHeaderAdvanceConflictHorizon(htup,
-												  &prstate->snapshotConflictHorizon);
+			HeapTupleHeaderAdvanceLatestRemovedXid(htup,
+												   &prstate->latestRemovedXid);
 		}
 		else if (!recent_dead)
 			break;

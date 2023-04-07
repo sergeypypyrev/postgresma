@@ -3,7 +3,7 @@
  * libpq_pipeline.c
  *		Verify libpq pipeline execution functionality
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,8 +15,10 @@
 
 #include "postgres_fe.h"
 
-#include <sys/select.h>
 #include <sys/time.h>
+#ifdef HAVE_SYS_SELECT_H
+#include <sys/select.h>
+#endif
 
 #include "catalog/pg_type_d.h"
 #include "common/fe_memutils.h"
@@ -1705,10 +1707,13 @@ main(int argc, char **argv)
 	PGresult   *res;
 	int			c;
 
-	while ((c = getopt(argc, argv, "r:t:")) != -1)
+	while ((c = getopt(argc, argv, "t:r:")) != -1)
 	{
 		switch (c)
 		{
+			case 't':			/* trace file */
+				tracefile = pg_strdup(optarg);
+				break;
 			case 'r':			/* numrows */
 				errno = 0;
 				numrows = strtol(optarg, NULL, 10);
@@ -1718,9 +1723,6 @@ main(int argc, char **argv)
 							optarg);
 					exit(1);
 				}
-				break;
-			case 't':			/* trace file */
-				tracefile = pg_strdup(optarg);
 				break;
 		}
 	}
@@ -1760,9 +1762,9 @@ main(int argc, char **argv)
 	res = PQexec(conn, "SET lc_messages TO \"C\"");
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		pg_fatal("failed to set lc_messages: %s", PQerrorMessage(conn));
-	res = PQexec(conn, "SET debug_parallel_query = off");
+	res = PQexec(conn, "SET force_parallel_mode = off");
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
-		pg_fatal("failed to set debug_parallel_query: %s", PQerrorMessage(conn));
+		pg_fatal("failed to set force_parallel_mode: %s", PQerrorMessage(conn));
 
 	/* Set the trace file, if requested */
 	if (tracefile != NULL)

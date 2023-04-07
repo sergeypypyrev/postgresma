@@ -3,7 +3,7 @@
  * parse_merge.c
  *	  handle merge-statement in parser
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -215,7 +215,6 @@ transformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 	 */
 	qry->targetList = NIL;
 	qry->rtable = pstate->p_rtable;
-	qry->rteperminfos = pstate->p_rteperminfos;
 
 	/*
 	 * Transform the join condition.  This includes references to the target
@@ -288,7 +287,7 @@ transformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 				{
 					List	   *exprList = NIL;
 					ListCell   *lc;
-					RTEPermissionInfo *perminfo;
+					RangeTblEntry *rte;
 					ListCell   *icols;
 					ListCell   *attnos;
 					List	   *icolumns;
@@ -347,7 +346,7 @@ transformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 					 * of expressions. Also, mark all the target columns as
 					 * needing insert permissions.
 					 */
-					perminfo = pstate->p_target_nsitem->p_perminfo;
+					rte = pstate->p_target_nsitem->p_rte;
 					forthree(lc, exprList, icols, icolumns, attnos, attrnos)
 					{
 						Expr	   *expr = (Expr *) lfirst(lc);
@@ -361,8 +360,8 @@ transformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 											  false);
 						action->targetList = lappend(action->targetList, tle);
 
-						perminfo->insertedCols =
-							bms_add_member(perminfo->insertedCols,
+						rte->insertedCols =
+							bms_add_member(rte->insertedCols,
 										   attr_num - FirstLowInvalidHeapAttributeNumber);
 					}
 				}

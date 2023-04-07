@@ -3,7 +3,7 @@
 # test parser generator for ecpg
 # call with backend grammar as stdin
 #
-# Copyright (c) 2009-2023, PostgreSQL Global Development Group
+# Copyright (c) 2009-2022, PostgreSQL Global Development Group
 #
 # Written by Michael Meskes <meskes@postgresql.org>
 #            Andy Colson <andy@squeakycode.net>
@@ -18,20 +18,17 @@
 
 use strict;
 use warnings;
-use Getopt::Long;
+no warnings 'uninitialized';
 
-my $srcdir  = '.';
-my $parser  = '../../../backend/parser/gram.y';
-my $stamp   = '';
 my $verbose = 0;
+if ($ARGV[0] eq '-v')
+{
+	$verbose = shift;
+}
+my $path   = shift || '.';
+my $parser = shift || '../../../backend/parser/gram.y';
 
-GetOptions(
-	'srcdir=s' => \$srcdir,
-	'parser=s' => \$parser,
-	'stamp=s'  => \$stamp,
-	'verbose'  => \$verbose,) or die "wrong arguments";
-
-my $filename = "$srcdir/ecpg.addons";
+my $filename = $path . "/ecpg.addons";
 if ($verbose)
 {
 	print "parser: $parser\n";
@@ -141,8 +138,7 @@ while (<$parser_fh>)
 			$in_rule = 0 if $arr[$fieldIndexer] eq ';';
 		}
 		elsif (($arr[$fieldIndexer] =~ '[A-Za-z0-9]+:')
-			   || (   $fieldIndexer + 1 < $n
-					  && $arr[ $fieldIndexer + 1 ] eq ':'))
+			|| $arr[ $fieldIndexer + 1 ] eq ':')
 		{
 			die "unterminated rule at grammar line $.\n"
 			  if $in_rule;
@@ -190,12 +186,6 @@ close $ecpg_fh;
 if ($verbose)
 {
 	print "$cc rules checked\n";
-}
-
-if ($stamp)
-{
-	open my $stampfh, '>', $stamp or die $!;
-	close $stampfh;
 }
 
 exit $ret;

@@ -3,23 +3,8 @@
  * execnodes.h
  *	  definitions for executor state nodes
  *
- * Most plan node types declared in plannodes.h have a corresponding
- * execution-state node type declared here.  An exception is that
- * expression nodes (subtypes of Expr) are usually represented by steps
- * of an ExprState, and fully handled within execExpr* - but sometimes
- * their state needs to be shared with other parts of the executor, as
- * for example with SubPlanState, which nodeSubplan.c has to modify.
  *
- * Node types declared in this file do not have any copy/equal/out/read
- * support.  (That is currently hard-wired in gen_node_support.pl, rather
- * than being explicitly represented by pg_node_attr decorations here.)
- * There is no need for copy, equal, or read support for executor trees.
- * Output support could be useful for debugging; but there are a lot of
- * specialized fields that would require custom code, so for now it's
- * not provided.
- *
- *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/execnodes.h
@@ -62,7 +47,7 @@ struct LogicalTapeSet;
 /* ----------------
  *		ExprState node
  *
- * ExprState represents the evaluation state for a whole expression tree.
+ * ExprState is the top-level node for expression evaluation.
  * It contains instructions (in ->steps) to evaluate the expression.
  * ----------------
  */
@@ -161,7 +146,6 @@ typedef struct ExprState
  *		IndexUnchanged		aminsert hint, cached for retail inserts
  *		Concurrent			are we doing a concurrent index build?
  *		BrokenHotChain		did we detect any broken HOT chains?
- *		Summarizing			is it a summarizing index?
  *		ParallelWorkers		# of workers requested (excludes leader)
  *		Am					Oid of index AM
  *		AmCache				private cache area for index AM
@@ -195,7 +179,6 @@ typedef struct IndexInfo
 	bool		ii_IndexUnchanged;
 	bool		ii_Concurrent;
 	bool		ii_BrokenHotChain;
-	bool		ii_Summarizing;
 	int			ii_ParallelWorkers;
 	Oid			ii_Am;
 	void	   *ii_AmCache;
@@ -464,9 +447,6 @@ typedef struct ResultRelInfo
 	 */
 	AttrNumber	ri_RowIdAttNo;
 
-	/* For UPDATE, attnums of generated columns to be computed */
-	Bitmapset  *ri_extraUpdatedCols;
-
 	/* Projection to generate new tuple in an INSERT/UPDATE */
 	ProjectionInfo *ri_projectNew;
 	/* Slot to hold that tuple */
@@ -518,13 +498,11 @@ typedef struct ResultRelInfo
 	/* array of constraint-checking expr states */
 	ExprState **ri_ConstraintExprs;
 
-	/* arrays of stored generated columns expr states, for INSERT and UPDATE */
-	ExprState **ri_GeneratedExprsI;
-	ExprState **ri_GeneratedExprsU;
+	/* array of stored generated columns expr states */
+	ExprState **ri_GeneratedExprs;
 
 	/* number of stored generated columns we need to compute */
-	int			ri_NumGeneratedNeededI;
-	int			ri_NumGeneratedNeededU;
+	int			ri_NumGeneratedNeeded;
 
 	/* list of RETURNING expressions */
 	List	   *ri_returningList;
@@ -546,21 +524,6 @@ typedef struct ResultRelInfo
 	ExprState  *ri_PartitionCheckExpr;
 
 	/*
-	 * Map to convert child result relation tuples to the format of the table
-	 * actually mentioned in the query (called "root").  Computed only if
-	 * needed.  A NULL map value indicates that no conversion is needed, so we
-	 * must have a separate flag to show if the map has been computed.
-	 */
-	TupleConversionMap *ri_ChildToRootMap;
-	bool		ri_ChildToRootMapValid;
-
-	/*
-	 * As above, but in the other direction.
-	 */
-	TupleConversionMap *ri_RootToChildMap;
-	bool		ri_RootToChildMapValid;
-
-	/*
 	 * Information needed by tuple routing target relations
 	 *
 	 * RootResultRelInfo gives the target relation mentioned in the query, if
@@ -568,11 +531,22 @@ typedef struct ResultRelInfo
 	 * mentioned in the query is an inherited table, nor when tuple routing is
 	 * not needed.
 	 *
-	 * PartitionTupleSlot is non-NULL if RootToChild conversion is needed and
-	 * the relation is a partition.
+	 * RootToPartitionMap and PartitionTupleSlot, initialized by
+	 * ExecInitRoutingInfo, are non-NULL if partition has a different tuple
+	 * format than the root table.
 	 */
 	struct ResultRelInfo *ri_RootResultRelInfo;
+	TupleConversionMap *ri_RootToPartitionMap;
 	TupleTableSlot *ri_PartitionTupleSlot;
+
+	/*
+	 * Map to convert child result relation tuples to the format of the table
+	 * actually mentioned in the query (called "root").  Computed only if
+	 * needed.  A NULL map value indicates that no conversion is needed, so we
+	 * must have a separate flag to show if the map has been computed.
+	 */
+	TupleConversionMap *ri_ChildToRootMap;
+	bool		ri_ChildToRootMapValid;
 
 	/* for use by copyfrom.c when performing multi-inserts */
 	struct CopyMultiInsertBuffer *ri_CopyMultiInsertBuffer;
@@ -583,6 +557,19 @@ typedef struct ResultRelInfo
 	 */
 	List	   *ri_ancestorResultRels;
 } ResultRelInfo;
+
+/*
+ * To avoid an ABI-breaking change in the size of ResultRelInfo in back
+ * branches, we create one of these for each result relation for which we've
+ * computed extraUpdatedCols, and store it in EState.es_resultrelinfo_extra.
+ */
+typedef struct ResultRelInfoExtra
+{
+	ResultRelInfo *rinfo;		/* owning ResultRelInfo */
+
+	/* For INSERT/UPDATE, attnums of generated columns to be computed */
+	Bitmapset  *ri_extraUpdatedCols;
+} ResultRelInfoExtra;
 
 /* ----------------
  *	  AsyncRequest
@@ -621,9 +608,7 @@ typedef struct EState
 								 * pointers, or NULL if not yet opened */
 	struct ExecRowMark **es_rowmarks;	/* Array of per-range-table-entry
 										 * ExecRowMarks, or NULL if none */
-	List	   *es_rteperminfos;	/* List of RTEPermissionInfo */
 	PlannedStmt *es_plannedstmt;	/* link to top of plan tree */
-	List	   *es_part_prune_infos;	/* PlannedStmt.partPruneInfos */
 	const char *es_sourceText;	/* Source text from QueryDesc */
 
 	JunkFilter *es_junkFilter;	/* top-level junk filter, if any */
@@ -712,6 +697,9 @@ typedef struct EState
 	 */
 	List	   *es_insert_pending_result_relations;
 	List	   *es_insert_pending_modifytables;
+
+	/* List of ResultRelInfoExtra structs (see above) */
+	List	   *es_resultrelinfo_extra;
 } EState;
 
 
@@ -1028,8 +1016,6 @@ typedef TupleTableSlot *(*ExecProcNodeMtd) (struct PlanState *pstate);
  */
 typedef struct PlanState
 {
-	pg_node_attr(abstract)
-
 	NodeTag		type;
 
 	Plan	   *plan;			/* associated Plan node */
@@ -1354,7 +1340,6 @@ struct AppendState
 	ParallelAppendState *as_pstate; /* parallel coordination info */
 	Size		pstate_len;		/* size of parallel coordination info */
 	struct PartitionPruneState *as_prune_state;
-	bool		as_valid_subplans_identified;	/* is as_valid_subplans valid? */
 	Bitmapset  *as_valid_subplans;
 	Bitmapset  *as_valid_asyncplans;	/* valid asynchronous plans indexes */
 	bool		(*choose_next_subplan) (AppendState *);
@@ -1970,7 +1955,6 @@ typedef struct CustomScanState
 	List	   *custom_ps;		/* list of child PlanState nodes, if any */
 	Size		pscan_len;		/* size of parallel coordination information */
 	const struct CustomExecMethods *methods;
-	const struct TupleTableSlotOps *slotOps;
 } CustomScanState;
 
 /* ----------------------------------------------------------------

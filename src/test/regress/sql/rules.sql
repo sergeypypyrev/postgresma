@@ -884,14 +884,33 @@ drop rule "_RETURN" on rules_fooview;
 drop view rules_fooview;
 
 --
--- We used to allow converting a table to a view by creating a "_RETURN"
--- rule for it, but no more.
+-- test conversion of table to view (needed to load some pg_dump files)
 --
 
 create table rules_fooview (x int, y text);
+select xmin, * from rules_fooview;
+
 create rule "_RETURN" as on select to rules_fooview do instead
   select 1 as x, 'aaa'::text as y;
-drop table rules_fooview;
+
+select * from rules_fooview;
+select xmin, * from rules_fooview;  -- fail, views don't have such a column
+
+select reltoastrelid, relkind, relfrozenxid
+  from pg_class where oid = 'rules_fooview'::regclass;
+
+drop view rules_fooview;
+
+-- cannot convert an inheritance parent or child to a view, though
+create table rules_fooview (x int, y text);
+create table rules_fooview_child () inherits (rules_fooview);
+
+create rule "_RETURN" as on select to rules_fooview do instead
+  select 1 as x, 'aaa'::text as y;
+create rule "_RETURN" as on select to rules_fooview_child do instead
+  select 1 as x, 'aaa'::text as y;
+
+drop table rules_fooview cascade;
 
 -- likewise, converting a partitioned table or partition to view is not allowed
 create table rules_fooview (x int, y text) partition by list (x);
@@ -1015,24 +1034,13 @@ insert into rules_src values(22,23), (33,default);
 select * from rules_src;
 select * from rules_log;
 create rule r4 as on delete to rules_src do notify rules_src_deletion;
+\d+ rules_src
 
 --
 -- Ensure an aliased target relation for insert is correctly deparsed.
 --
 create rule r5 as on insert to rules_src do instead insert into rules_log AS trgt SELECT NEW.* RETURNING trgt.f1, trgt.f2;
 create rule r6 as on update to rules_src do instead UPDATE rules_log AS trgt SET tag = 'updated' WHERE trgt.f1 = new.f1;
-
---
--- Check deparse disambiguation of INSERT/UPDATE/DELETE targets.
---
-create rule r7 as on delete to rules_src do instead
-  with wins as (insert into int4_tbl as trgt values (0) returning *),
-       wupd as (update int4_tbl trgt set f1 = f1+1 returning *),
-       wdel as (delete from int4_tbl trgt where f1 = 0 returning *)
-  insert into rules_log AS trgt select old.* from wins, wupd, wdel
-  returning trgt.f1, trgt.f2;
-
--- check display of all rules added above
 \d+ rules_src
 
 --
@@ -1045,23 +1053,6 @@ create rule rr as on update to rule_t1 do instead UPDATE rule_dest trgt
   WHERE trgt.f1 = new.f1 RETURNING new.*;
 \d+ rule_t1
 drop table rule_t1, rule_dest;
-
---
--- Test implicit LATERAL references to old/new in rules
---
-CREATE TABLE rule_t1(a int, b text DEFAULT 'xxx', c int);
-CREATE VIEW rule_v1 AS SELECT * FROM rule_t1;
-CREATE RULE v1_ins AS ON INSERT TO rule_v1
-  DO ALSO INSERT INTO rule_t1
-  SELECT * FROM (SELECT a + 10 FROM rule_t1 WHERE a = NEW.a) tt;
-CREATE RULE v1_upd AS ON UPDATE TO rule_v1
-  DO ALSO UPDATE rule_t1 t
-  SET c = tt.a * 10
-  FROM (SELECT a FROM rule_t1 WHERE a = OLD.a) tt WHERE t.a = tt.a;
-INSERT INTO rule_v1 VALUES (1, 'a'), (2, 'b');
-UPDATE rule_v1 SET b = upper(b);
-SELECT * FROM rule_t1;
-DROP TABLE rule_t1 CASCADE;
 
 --
 -- check alter rename rule
@@ -1322,25 +1313,10 @@ SET SESSION AUTHORIZATION regress_rule_user1;
 INSERT INTO ruletest_v1 VALUES (1);
 
 RESET SESSION AUTHORIZATION;
-
--- Test that main query's relation's permissions are checked before
--- the rule action's relation's.
-CREATE TABLE ruletest_t3 (x int);
-CREATE RULE rule2 AS ON UPDATE TO ruletest_t1
-    DO INSTEAD INSERT INTO ruletest_t2 VALUES (OLD.*);
-REVOKE ALL ON ruletest_t2 FROM regress_rule_user1;
-REVOKE ALL ON ruletest_t3 FROM regress_rule_user1;
-ALTER TABLE ruletest_t1 OWNER TO regress_rule_user1;
-SET SESSION AUTHORIZATION regress_rule_user1;
-UPDATE ruletest_t1 t1 SET x = 0 FROM ruletest_t3 t3 WHERE t1.x = t3.x;
-
-RESET SESSION AUTHORIZATION;
 SELECT * FROM ruletest_t1;
 SELECT * FROM ruletest_t2;
 
 DROP VIEW ruletest_v1;
-DROP RULE rule2 ON ruletest_t1;
-DROP TABLE ruletest_t3;
 DROP TABLE ruletest_t2;
 DROP TABLE ruletest_t1;
 

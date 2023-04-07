@@ -14,7 +14,7 @@
  *	plan --- consider improving this someday.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * src/backend/utils/adt/ri_triggers.c
  *
@@ -176,7 +176,8 @@ typedef struct RI_CompareHashEntry
 static HTAB *ri_constraint_cache = NULL;
 static HTAB *ri_query_cache = NULL;
 static HTAB *ri_compare_cache = NULL;
-static dclist_head ri_constraint_cache_valid_list;
+static dlist_head ri_constraint_cache_valid_list;
+static int	ri_constraint_cache_valid_count = 0;
 
 
 /*
@@ -195,7 +196,7 @@ static void ri_GenerateQual(StringInfo buf,
 							Oid opoid,
 							const char *rightop, Oid rightoptype);
 static void ri_GenerateQualCollation(StringInfo buf, Oid collation);
-static int	ri_NullCheck(TupleDesc tupDesc, TupleTableSlot *slot,
+static int	ri_NullCheck(TupleDesc tupdesc, TupleTableSlot *slot,
 						 const RI_ConstraintInfo *riinfo, bool rel_is_pk);
 static void ri_BuildQueryKey(RI_QueryKey *key,
 							 const RI_ConstraintInfo *riinfo,
@@ -1375,8 +1376,6 @@ RI_Initial_Check(Trigger *trigger, Relation fk_rel, Relation pk_rel)
 	char		fkattname[MAX_QUOTED_NAME_LEN + 3];
 	RangeTblEntry *pkrte;
 	RangeTblEntry *fkrte;
-	RTEPermissionInfo *pk_perminfo;
-	RTEPermissionInfo *fk_perminfo;
 	const char *sep;
 	const char *fk_only;
 	const char *pk_only;
@@ -1399,34 +1398,27 @@ RI_Initial_Check(Trigger *trigger, Relation fk_rel, Relation pk_rel)
 	pkrte->relid = RelationGetRelid(pk_rel);
 	pkrte->relkind = pk_rel->rd_rel->relkind;
 	pkrte->rellockmode = AccessShareLock;
-
-	pk_perminfo = makeNode(RTEPermissionInfo);
-	pk_perminfo->relid = RelationGetRelid(pk_rel);
-	pk_perminfo->requiredPerms = ACL_SELECT;
+	pkrte->requiredPerms = ACL_SELECT;
 
 	fkrte = makeNode(RangeTblEntry);
 	fkrte->rtekind = RTE_RELATION;
 	fkrte->relid = RelationGetRelid(fk_rel);
 	fkrte->relkind = fk_rel->rd_rel->relkind;
 	fkrte->rellockmode = AccessShareLock;
-
-	fk_perminfo = makeNode(RTEPermissionInfo);
-	fk_perminfo->relid = RelationGetRelid(fk_rel);
-	fk_perminfo->requiredPerms = ACL_SELECT;
+	fkrte->requiredPerms = ACL_SELECT;
 
 	for (int i = 0; i < riinfo->nkeys; i++)
 	{
 		int			attno;
 
 		attno = riinfo->pk_attnums[i] - FirstLowInvalidHeapAttributeNumber;
-		pk_perminfo->selectedCols = bms_add_member(pk_perminfo->selectedCols, attno);
+		pkrte->selectedCols = bms_add_member(pkrte->selectedCols, attno);
 
 		attno = riinfo->fk_attnums[i] - FirstLowInvalidHeapAttributeNumber;
-		fk_perminfo->selectedCols = bms_add_member(fk_perminfo->selectedCols, attno);
+		fkrte->selectedCols = bms_add_member(fkrte->selectedCols, attno);
 	}
 
-	if (!ExecCheckPermissions(list_make2(fkrte, pkrte),
-							  list_make2(fk_perminfo, pk_perminfo), false))
+	if (!ExecCheckRTPerms(list_make2(fkrte, pkrte), false))
 		return false;
 
 	/*
@@ -1436,9 +1428,9 @@ RI_Initial_Check(Trigger *trigger, Relation fk_rel, Relation pk_rel)
 	 */
 	if (!has_bypassrls_privilege(GetUserId()) &&
 		((pk_rel->rd_rel->relrowsecurity &&
-		  !object_ownercheck(RelationRelationId, pkrte->relid, GetUserId())) ||
+		  !pg_class_ownercheck(pkrte->relid, GetUserId())) ||
 		 (fk_rel->rd_rel->relrowsecurity &&
-		  !object_ownercheck(RelationRelationId, fkrte->relid, GetUserId()))))
+		  !pg_class_ownercheck(fkrte->relid, GetUserId()))))
 		return false;
 
 	/*----------
@@ -2129,7 +2121,7 @@ ri_LoadConstraintInfo(Oid constraintOid)
 	 * Find or create a hash entry.  If we find a valid one, just return it.
 	 */
 	riinfo = (RI_ConstraintInfo *) hash_search(ri_constraint_cache,
-											   &constraintOid,
+											   (void *) &constraintOid,
 											   HASH_ENTER, &found);
 	if (!found)
 		riinfo->valid = false;
@@ -2180,9 +2172,10 @@ ri_LoadConstraintInfo(Oid constraintOid)
 
 	/*
 	 * For efficient processing of invalidation messages below, we keep a
-	 * doubly-linked count list of all currently valid entries.
+	 * doubly-linked list, and a count, of all currently valid entries.
 	 */
-	dclist_push_tail(&ri_constraint_cache_valid_list, &riinfo->valid_link);
+	dlist_push_tail(&ri_constraint_cache_valid_list, &riinfo->valid_link);
+	ri_constraint_cache_valid_count++;
 
 	riinfo->valid = true;
 
@@ -2240,13 +2233,13 @@ InvalidateConstraintCacheCallBack(Datum arg, int cacheid, uint32 hashvalue)
 	 * O(N^2) behavior in situations where a session touches many foreign keys
 	 * and also does many ALTER TABLEs, such as a restore from pg_dump.
 	 */
-	if (dclist_count(&ri_constraint_cache_valid_list) > 1000)
+	if (ri_constraint_cache_valid_count > 1000)
 		hashvalue = 0;			/* pretend it's a cache reset */
 
-	dclist_foreach_modify(iter, &ri_constraint_cache_valid_list)
+	dlist_foreach_modify(iter, &ri_constraint_cache_valid_list)
 	{
-		RI_ConstraintInfo *riinfo = dclist_container(RI_ConstraintInfo,
-													 valid_link, iter.cur);
+		RI_ConstraintInfo *riinfo = dlist_container(RI_ConstraintInfo,
+													valid_link, iter.cur);
 
 		/*
 		 * We must invalidate not only entries directly matching the given
@@ -2259,7 +2252,8 @@ InvalidateConstraintCacheCallBack(Datum arg, int cacheid, uint32 hashvalue)
 		{
 			riinfo->valid = false;
 			/* Remove invalidated entries from the list, too */
-			dclist_delete_from(&ri_constraint_cache_valid_list, iter.cur);
+			dlist_delete(iter.cur);
+			ri_constraint_cache_valid_count--;
 		}
 	}
 }
@@ -2724,7 +2718,7 @@ ri_FetchPreparedPlan(RI_QueryKey *key)
 	 * Lookup for the key
 	 */
 	entry = (RI_QueryHashEntry *) hash_search(ri_query_cache,
-											  key,
+											  (void *) key,
 											  HASH_FIND, NULL);
 	if (entry == NULL)
 		return NULL;
@@ -2777,7 +2771,7 @@ ri_HashPreparedPlan(RI_QueryKey *key, SPIPlanPtr plan)
 	 * invalid by ri_FetchPreparedPlan.
 	 */
 	entry = (RI_QueryHashEntry *) hash_search(ri_query_cache,
-											  key,
+											  (void *) key,
 											  HASH_ENTER, &found);
 	Assert(!found || entry->plan == NULL);
 	entry->plan = plan;
@@ -2927,7 +2921,7 @@ ri_HashCompareOp(Oid eq_opr, Oid typeid)
 	key.eq_opr = eq_opr;
 	key.typeid = typeid;
 	entry = (RI_CompareHashEntry *) hash_search(ri_compare_cache,
-												&key,
+												(void *) &key,
 												HASH_ENTER, &found);
 	if (!found)
 		entry->valid = false;

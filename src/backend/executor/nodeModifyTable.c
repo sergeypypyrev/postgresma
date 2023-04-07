@@ -3,7 +3,7 @@
  * nodeModifyTable.c
  *	  routines to handle ModifyTable nodes.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -88,6 +88,15 @@ typedef struct ModifyTableContext
 	 */
 	TupleTableSlot *planSlot;
 
+	/*
+	 * During EvalPlanQual, project and return the new version of the new
+	 * tuple
+	 */
+	TupleTableSlot *(*GetUpdateNewTuple) (ResultRelInfo *resultRelInfo,
+										  TupleTableSlot *epqslot,
+										  TupleTableSlot *oldSlot,
+										  MergeActionState *relaction);
+
 	/* MERGE specific */
 	MergeActionState *relaction;	/* MERGE action in progress */
 
@@ -96,6 +105,12 @@ typedef struct ModifyTableContext
 	 * being updated or deleted
 	 */
 	TM_FailureData tmfd;
+
+	/*
+	 * The tuple produced by EvalPlanQual to retry from, if a cross-partition
+	 * UPDATE requires it
+	 */
+	TupleTableSlot *cpUpdateRetrySlot;
 
 	/*
 	 * The tuple projected by the INSERT's RETURNING clause, when doing a
@@ -110,8 +125,8 @@ typedef struct ModifyTableContext
 typedef struct UpdateContext
 {
 	bool		updated;		/* did UPDATE actually occur? */
+	bool		updateIndexes;	/* index update required? */
 	bool		crossPartUpdate;	/* was it a cross-partition update? */
-	TU_UpdateIndexes updateIndexes;	/* Which index updates are required? */
 
 	/*
 	 * Lock mode to acquire on the latest tuple version before performing
@@ -147,6 +162,10 @@ static TupleTableSlot *ExecPrepareTupleRouting(ModifyTableState *mtstate,
 											   ResultRelInfo *targetRelInfo,
 											   TupleTableSlot *slot,
 											   ResultRelInfo **partRelInfo);
+static TupleTableSlot *internalGetUpdateNewTuple(ResultRelInfo *relinfo,
+												 TupleTableSlot *planSlot,
+												 TupleTableSlot *oldSlot,
+												 MergeActionState *relaction);
 
 static TupleTableSlot *ExecMerge(ModifyTableContext *context,
 								 ResultRelInfo *resultRelInfo,
@@ -160,6 +179,10 @@ static bool ExecMergeMatched(ModifyTableContext *context,
 static void ExecMergeNotMatched(ModifyTableContext *context,
 								ResultRelInfo *resultRelInfo,
 								bool canSetTag);
+static TupleTableSlot *mergeGetUpdateNewTuple(ResultRelInfo *relinfo,
+											  TupleTableSlot *planSlot,
+											  TupleTableSlot *oldSlot,
+											  MergeActionState *relaction);
 
 
 /*
@@ -333,14 +356,10 @@ ExecCheckTIDVisible(EState *estate,
 /*
  * Initialize to compute stored generated columns for a tuple
  *
- * This fills the resultRelInfo's ri_GeneratedExprsI/ri_NumGeneratedNeededI
- * or ri_GeneratedExprsU/ri_NumGeneratedNeededU fields, depending on cmdtype.
- * If cmdType == CMD_UPDATE, the ri_extraUpdatedCols field is filled too.
- *
- * Note: usually, a given query would need only one of ri_GeneratedExprsI and
- * ri_GeneratedExprsU per result rel; but MERGE can need both, and so can
- * cross-partition UPDATEs, since a partition might be the target of both
- * UPDATE and INSERT actions.
+ * This fills the resultRelInfo's ri_GeneratedExprs field and makes an
+ * associated ResultRelInfoExtra struct to hold ri_extraUpdatedCols.
+ * (Currently, ri_extraUpdatedCols is consulted only in UPDATE, but we might
+ * as well fill it for INSERT too.)
  */
 void
 ExecInitStoredGenerated(ResultRelInfo *resultRelInfo,
@@ -350,10 +369,12 @@ ExecInitStoredGenerated(ResultRelInfo *resultRelInfo,
 	Relation	rel = resultRelInfo->ri_RelationDesc;
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	int			natts = tupdesc->natts;
-	ExprState **ri_GeneratedExprs;
-	int			ri_NumGeneratedNeeded;
 	Bitmapset  *updatedCols;
+	ResultRelInfoExtra *rextra;
 	MemoryContext oldContext;
+
+	/* Don't call twice */
+	Assert(resultRelInfo->ri_GeneratedExprs == NULL);
 
 	/* Nothing to do if no generated columns */
 	if (!(tupdesc->constr && tupdesc->constr->has_generated_stored))
@@ -377,8 +398,15 @@ ExecInitStoredGenerated(ResultRelInfo *resultRelInfo,
 	 */
 	oldContext = MemoryContextSwitchTo(estate->es_query_cxt);
 
-	ri_GeneratedExprs = (ExprState **) palloc0(natts * sizeof(ExprState *));
-	ri_NumGeneratedNeeded = 0;
+	resultRelInfo->ri_GeneratedExprs =
+		(ExprState **) palloc0(natts * sizeof(ExprState *));
+	resultRelInfo->ri_NumGeneratedNeeded = 0;
+
+	rextra = palloc_object(ResultRelInfoExtra);
+	rextra->rinfo = resultRelInfo;
+	rextra->ri_extraUpdatedCols = NULL;
+	estate->es_resultrelinfo_extra = lappend(estate->es_resultrelinfo_extra,
+											 rextra);
 
 	for (int i = 0; i < natts; i++)
 	{
@@ -407,33 +435,14 @@ ExecInitStoredGenerated(ResultRelInfo *resultRelInfo,
 			}
 
 			/* No luck, so prepare the expression for execution */
-			ri_GeneratedExprs[i] = ExecPrepareExpr(expr, estate);
-			ri_NumGeneratedNeeded++;
+			resultRelInfo->ri_GeneratedExprs[i] = ExecPrepareExpr(expr, estate);
+			resultRelInfo->ri_NumGeneratedNeeded++;
 
-			/* If UPDATE, mark column in resultRelInfo->ri_extraUpdatedCols */
-			if (cmdtype == CMD_UPDATE)
-				resultRelInfo->ri_extraUpdatedCols =
-					bms_add_member(resultRelInfo->ri_extraUpdatedCols,
-								   i + 1 - FirstLowInvalidHeapAttributeNumber);
+			/* And mark this column in rextra->ri_extraUpdatedCols */
+			rextra->ri_extraUpdatedCols =
+				bms_add_member(rextra->ri_extraUpdatedCols,
+							   i + 1 - FirstLowInvalidHeapAttributeNumber);
 		}
-	}
-
-	/* Save in appropriate set of fields */
-	if (cmdtype == CMD_UPDATE)
-	{
-		/* Don't call twice */
-		Assert(resultRelInfo->ri_GeneratedExprsU == NULL);
-
-		resultRelInfo->ri_GeneratedExprsU = ri_GeneratedExprs;
-		resultRelInfo->ri_NumGeneratedNeededU = ri_NumGeneratedNeeded;
-	}
-	else
-	{
-		/* Don't call twice */
-		Assert(resultRelInfo->ri_GeneratedExprsI == NULL);
-
-		resultRelInfo->ri_GeneratedExprsI = ri_GeneratedExprs;
-		resultRelInfo->ri_NumGeneratedNeededI = ri_NumGeneratedNeeded;
 	}
 
 	MemoryContextSwitchTo(oldContext);
@@ -451,7 +460,6 @@ ExecComputeStoredGenerated(ResultRelInfo *resultRelInfo,
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	int			natts = tupdesc->natts;
 	ExprContext *econtext = GetPerTupleExprContext(estate);
-	ExprState **ri_GeneratedExprs;
 	MemoryContext oldContext;
 	Datum	   *values;
 	bool	   *nulls;
@@ -460,25 +468,20 @@ ExecComputeStoredGenerated(ResultRelInfo *resultRelInfo,
 	Assert(tupdesc->constr && tupdesc->constr->has_generated_stored);
 
 	/*
-	 * Initialize the expressions if we didn't already, and check whether we
-	 * can exit early because nothing needs to be computed.
+	 * For relations named directly in the query, ExecInitStoredGenerated
+	 * should have been called already; but this might not have happened yet
+	 * for a partition child rel.  Also, it's convenient for outside callers
+	 * to not have to call ExecInitStoredGenerated explicitly.
 	 */
-	if (cmdtype == CMD_UPDATE)
-	{
-		if (resultRelInfo->ri_GeneratedExprsU == NULL)
-			ExecInitStoredGenerated(resultRelInfo, estate, cmdtype);
-		if (resultRelInfo->ri_NumGeneratedNeededU == 0)
-			return;
-		ri_GeneratedExprs = resultRelInfo->ri_GeneratedExprsU;
-	}
-	else
-	{
-		if (resultRelInfo->ri_GeneratedExprsI == NULL)
-			ExecInitStoredGenerated(resultRelInfo, estate, cmdtype);
-		/* Early exit is impossible given the prior Assert */
-		Assert(resultRelInfo->ri_NumGeneratedNeededI > 0);
-		ri_GeneratedExprs = resultRelInfo->ri_GeneratedExprsI;
-	}
+	if (resultRelInfo->ri_GeneratedExprs == NULL)
+		ExecInitStoredGenerated(resultRelInfo, estate, cmdtype);
+
+	/*
+	 * If no generated columns have been affected by this change, then skip
+	 * the rest.
+	 */
+	if (resultRelInfo->ri_NumGeneratedNeeded == 0)
+		return;
 
 	oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
@@ -492,7 +495,7 @@ ExecComputeStoredGenerated(ResultRelInfo *resultRelInfo,
 	{
 		Form_pg_attribute attr = TupleDescAttr(tupdesc, i);
 
-		if (ri_GeneratedExprs[i])
+		if (resultRelInfo->ri_GeneratedExprs[i])
 		{
 			Datum		val;
 			bool		isnull;
@@ -501,7 +504,7 @@ ExecComputeStoredGenerated(ResultRelInfo *resultRelInfo,
 
 			econtext->ecxt_scantuple = slot;
 
-			val = ExecEvalExpr(ri_GeneratedExprs[i], econtext, &isnull);
+			val = ExecEvalExpr(resultRelInfo->ri_GeneratedExprs[i], econtext, &isnull);
 
 			/*
 			 * We must make a copy of val as we have no guarantees about where
@@ -715,13 +718,25 @@ ExecGetUpdateNewTuple(ResultRelInfo *relinfo,
 					  TupleTableSlot *planSlot,
 					  TupleTableSlot *oldSlot)
 {
-	ProjectionInfo *newProj = relinfo->ri_projectNew;
-	ExprContext *econtext;
-
 	/* Use a few extra Asserts to protect against outside callers */
 	Assert(relinfo->ri_projectNewInfoValid);
 	Assert(planSlot != NULL && !TTS_EMPTY(planSlot));
 	Assert(oldSlot != NULL && !TTS_EMPTY(oldSlot));
+
+	return internalGetUpdateNewTuple(relinfo, planSlot, oldSlot, NULL);
+}
+
+/*
+ * Callback for ModifyTableState->GetUpdateNewTuple for use by regular UPDATE.
+ */
+static TupleTableSlot *
+internalGetUpdateNewTuple(ResultRelInfo *relinfo,
+						  TupleTableSlot *planSlot,
+						  TupleTableSlot *oldSlot,
+						  MergeActionState *relaction)
+{
+	ProjectionInfo *newProj = relinfo->ri_projectNew;
+	ExprContext *econtext;
 
 	econtext = newProj->pi_exprContext;
 	econtext->ecxt_outertuple = planSlot;
@@ -1099,8 +1114,7 @@ ExecInsert(ModifyTableContext *context,
 			recheckIndexes = ExecInsertIndexTuples(resultRelInfo,
 												   slot, estate, false, true,
 												   &specConflict,
-												   arbiterIndexes,
-												   false);
+												   arbiterIndexes);
 
 			/* adjust the tuple's state accordingly */
 			table_tuple_complete_speculative(resultRelationDesc, slot,
@@ -1139,8 +1153,7 @@ ExecInsert(ModifyTableContext *context,
 			if (resultRelInfo->ri_NumIndices > 0)
 				recheckIndexes = ExecInsertIndexTuples(resultRelInfo,
 													   slot, estate, false,
-													   false, NULL, NIL,
-													   false);
+													   false, NULL, NIL);
 		}
 	}
 
@@ -1303,11 +1316,8 @@ ExecPendingInserts(EState *estate)
 static bool
 ExecDeletePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				   ItemPointer tupleid, HeapTuple oldtuple,
-				   TupleTableSlot **epqreturnslot, TM_Result *result)
+				   TupleTableSlot **epqreturnslot)
 {
-	if (result)
-		*result = TM_Ok;
-
 	/* BEFORE ROW DELETE triggers */
 	if (resultRelInfo->ri_TrigDesc &&
 		resultRelInfo->ri_TrigDesc->trig_delete_before_row)
@@ -1318,7 +1328,7 @@ ExecDeletePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 
 		return ExecBRDeleteTriggers(context->estate, context->epqstate,
 									resultRelInfo, tupleid, oldtuple,
-									epqreturnslot, result, &context->tmfd);
+									epqreturnslot);
 	}
 
 	return true;
@@ -1435,7 +1445,7 @@ ExecDelete(ModifyTableContext *context,
 	 * done if it says we are.
 	 */
 	if (!ExecDeletePrologue(context, resultRelInfo, tupleid, oldtuple,
-							epqreturnslot, NULL))
+							epqreturnslot))
 		return NULL;
 
 	/* INSTEAD OF ROW DELETE Triggers */
@@ -1487,7 +1497,7 @@ ExecDelete(ModifyTableContext *context,
 		 * special-case behavior needed for referential integrity updates in
 		 * transaction-snapshot mode transactions.
 		 */
-ldelete:
+ldelete:;
 		result = ExecDeleteAct(context, resultRelInfo, tupleid, changingPart);
 
 		switch (result)
@@ -1716,10 +1726,8 @@ ldelete:
  *
  * False is returned if the tuple we're trying to move is found to have been
  * concurrently updated.  In that case, the caller must check if the updated
- * tuple that's returned in *retry_slot still needs to be re-routed, and call
- * this function again or perform a regular update accordingly.  For MERGE,
- * the updated tuple is not returned in *retry_slot; it has its own retry
- * logic.
+ * tuple (in updateCxt->cpUpdateRetrySlot) still needs to be re-routed, and
+ * call this function again or perform a regular update accordingly.
  */
 static bool
 ExecCrossPartitionUpdate(ModifyTableContext *context,
@@ -1728,7 +1736,6 @@ ExecCrossPartitionUpdate(ModifyTableContext *context,
 						 TupleTableSlot *slot,
 						 bool canSetTag,
 						 UpdateContext *updateCxt,
-						 TupleTableSlot **retry_slot,
 						 TupleTableSlot **inserted_tuple,
 						 ResultRelInfo **insert_destrel)
 {
@@ -1739,7 +1746,7 @@ ExecCrossPartitionUpdate(ModifyTableContext *context,
 	TupleTableSlot *epqslot = NULL;
 
 	context->cpUpdateReturningSlot = NULL;
-	*retry_slot = NULL;
+	context->cpUpdateRetrySlot = NULL;
 
 	/*
 	 * Disallow an INSERT ON CONFLICT DO UPDATE that causes the original row
@@ -1818,13 +1825,9 @@ ExecCrossPartitionUpdate(ModifyTableContext *context,
 		 * another transaction has concurrently updated the same row, it
 		 * re-fetches the row, skips the delete, and epqslot is set to the
 		 * re-fetched tuple slot.  In that case, we need to do all the checks
-		 * again.  For MERGE, we leave everything to the caller (it must do
-		 * additional rechecking, and might end up executing a different
-		 * action entirely).
+		 * again.
 		 */
-		if (context->relaction != NULL)
-			return false;
-		else if (TupIsNull(epqslot))
+		if (TupIsNull(epqslot))
 			return true;
 		else
 		{
@@ -1841,8 +1844,9 @@ ExecCrossPartitionUpdate(ModifyTableContext *context,
 											   oldSlot))
 				elog(ERROR, "failed to fetch tuple being updated");
 			/* and project the new tuple to retry the UPDATE with */
-			*retry_slot = ExecGetUpdateNewTuple(resultRelInfo, epqslot,
-												oldSlot);
+			context->cpUpdateRetrySlot =
+				context->GetUpdateNewTuple(resultRelInfo, epqslot, oldSlot,
+										   context->relaction);
 			return false;
 		}
 	}
@@ -1883,13 +1887,9 @@ ExecCrossPartitionUpdate(ModifyTableContext *context,
  */
 static bool
 ExecUpdatePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
-				   ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
-				   TM_Result *result)
+				   ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot)
 {
 	Relation	resultRelationDesc = resultRelInfo->ri_RelationDesc;
-
-	if (result)
-		*result = TM_Ok;
 
 	ExecMaterializeSlot(slot);
 
@@ -1911,17 +1911,16 @@ ExecUpdatePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 
 		return ExecBRUpdateTriggers(context->estate, context->epqstate,
 									resultRelInfo, tupleid, oldtuple, slot,
-									result, &context->tmfd);
+									&context->tmfd);
 	}
 
 	return true;
 }
 
 /*
- * ExecUpdatePrepareSlot -- subroutine for ExecUpdateAct
+ * ExecUpdatePrepareSlot -- subroutine for ExecUpdate
  *
  * Apply the final modifications to the tuple slot before the update.
- * (This is split out because we also need it in the foreign-table code path.)
  */
 static void
 ExecUpdatePrepareSlot(ResultRelInfo *resultRelInfo,
@@ -1957,6 +1956,9 @@ ExecUpdatePrepareSlot(ResultRelInfo *resultRelInfo,
  * caller is also in charge of doing EvalPlanQual if the tuple is found to
  * be concurrently updated.  However, in case of a cross-partition update,
  * this routine does it.
+ *
+ * Caller is in charge of doing EvalPlanQual as necessary, and of keeping
+ * indexes current for the update.
  */
 static TM_Result
 ExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
@@ -1971,14 +1973,13 @@ ExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	updateCxt->crossPartUpdate = false;
 
 	/*
-	 * If we move the tuple to a new partition, we loop back here to recompute
-	 * GENERATED values (which are allowed to be different across partitions)
-	 * and recheck any RLS policies and constraints.  We do not fire any
-	 * BEFORE triggers of the new partition, however.
+	 * If we generate a new candidate tuple after EvalPlanQual testing, we
+	 * must loop back here and recheck any RLS policies and constraints. (We
+	 * don't need to redo triggers, however.  If there are any BEFORE triggers
+	 * then trigger.c will have done table_tuple_lock to lock the correct
+	 * tuple, so there's no need to do them again.)
 	 */
-lreplace:
-	/* Fill in GENERATEd columns */
-	ExecUpdatePrepareSlot(resultRelInfo, slot, estate);
+lreplace:;
 
 	/* ensure slot is independent, consider e.g. EPQ */
 	ExecMaterializeSlot(slot);
@@ -2012,8 +2013,7 @@ lreplace:
 	 */
 	if (partition_constraint_failed)
 	{
-		TupleTableSlot *inserted_tuple,
-				   *retry_slot;
+		TupleTableSlot *inserted_tuple;
 		ResultRelInfo *insert_destrel = NULL;
 
 		/*
@@ -2025,7 +2025,6 @@ lreplace:
 		if (ExecCrossPartitionUpdate(context, resultRelInfo,
 									 tupleid, oldtuple, slot,
 									 canSetTag, updateCxt,
-									 &retry_slot,
 									 &inserted_tuple,
 									 &insert_destrel))
 		{
@@ -2070,7 +2069,7 @@ lreplace:
 		 * ExecCrossPartitionUpdate installed an updated version of the new
 		 * tuple in the retry slot; start over.
 		 */
-		slot = retry_slot;
+		slot = context->cpUpdateRetrySlot;
 		goto lreplace;
 	}
 
@@ -2114,18 +2113,17 @@ lreplace:
 static void
 ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 				   ResultRelInfo *resultRelInfo, ItemPointer tupleid,
-				   HeapTuple oldtuple, TupleTableSlot *slot)
+				   HeapTuple oldtuple, TupleTableSlot *slot,
+				   List *recheckIndexes)
 {
 	ModifyTableState *mtstate = context->mtstate;
-	List	   *recheckIndexes = NIL;
 
 	/* insert index entries for tuple if necessary */
-	if (resultRelInfo->ri_NumIndices > 0 && (updateCxt->updateIndexes != TU_None))
+	if (resultRelInfo->ri_NumIndices > 0 && updateCxt->updateIndexes)
 		recheckIndexes = ExecInsertIndexTuples(resultRelInfo,
 											   slot, context->estate,
 											   true, false,
-											   NULL, NIL,
-											   (updateCxt->updateIndexes == TU_Summarizing));
+											   NULL, NIL);
 
 	/* AFTER ROW UPDATE Triggers */
 	ExecARUpdateTriggers(context->estate, resultRelInfo,
@@ -2136,8 +2134,6 @@ ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 						 mtstate->mt_oc_transition_capture :
 						 mtstate->mt_transition_capture,
 						 false);
-
-	list_free(recheckIndexes);
 
 	/*
 	 * Check any WITH CHECK OPTION constraints from parent views.  We are
@@ -2257,6 +2253,7 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	EState	   *estate = context->estate;
 	Relation	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 	UpdateContext updateCxt = {0};
+	List	   *recheckIndexes = NIL;
 	TM_Result	result;
 
 	/*
@@ -2269,7 +2266,7 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	 * Prepare for the update.  This includes BEFORE ROW triggers, so we're
 	 * done if it says we are.
 	 */
-	if (!ExecUpdatePrologue(context, resultRelInfo, tupleid, oldtuple, slot, NULL))
+	if (!ExecUpdatePrologue(context, resultRelInfo, tupleid, oldtuple, slot))
 		return NULL;
 
 	/* INSTEAD OF ROW UPDATE Triggers */
@@ -2282,7 +2279,6 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	}
 	else if (resultRelInfo->ri_FdwRoutine)
 	{
-		/* Fill in GENERATEd columns */
 		ExecUpdatePrepareSlot(resultRelInfo, slot, estate);
 
 		/*
@@ -2305,13 +2301,9 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	}
 	else
 	{
-		/*
-		 * If we generate a new candidate tuple after EvalPlanQual testing, we
-		 * must loop back here to try again.  (We don't need to redo triggers,
-		 * however.  If there are any BEFORE triggers then trigger.c will have
-		 * done table_tuple_lock to lock the correct tuple, so there's no need
-		 * to do them again.)
-		 */
+		/* Fill in the slot appropriately */
+		ExecUpdatePrepareSlot(resultRelInfo, slot, estate);
+
 redo_act:
 		result = ExecUpdateAct(context, resultRelInfo, tupleid, oldtuple, slot,
 							   canSetTag, &updateCxt);
@@ -2470,7 +2462,9 @@ redo_act:
 		(estate->es_processed)++;
 
 	ExecUpdateEpilogue(context, &updateCxt, resultRelInfo, tupleid, oldtuple,
-					   slot);
+					   slot, recheckIndexes);
+
+	list_free(recheckIndexes);
 
 	/* Process RETURNING if present */
 	if (resultRelInfo->ri_projectReturning)
@@ -2816,7 +2810,7 @@ ExecMergeMatched(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	econtext->ecxt_innertuple = context->planSlot;
 	econtext->ecxt_outertuple = NULL;
 
-lmerge_matched:
+lmerge_matched:;
 
 	/*
 	 * This routine is only invoked for matched rows, and we must have found
@@ -2837,6 +2831,7 @@ lmerge_matched:
 	{
 		MergeActionState *relaction = (MergeActionState *) lfirst(l);
 		CmdType		commandType = relaction->mas_action->commandType;
+		List	   *recheckIndexes = NIL;
 		TM_Result	result;
 		UpdateContext updateCxt = {0};
 
@@ -2883,31 +2878,34 @@ lmerge_matched:
 				newslot = ExecProject(relaction->mas_proj);
 
 				context->relaction = relaction;
+				context->GetUpdateNewTuple = mergeGetUpdateNewTuple;
+				context->cpUpdateRetrySlot = NULL;
+
 				if (!ExecUpdatePrologue(context, resultRelInfo,
-										tupleid, NULL, newslot, &result))
+										tupleid, NULL, newslot))
 				{
-					if (result == TM_Ok)
-						return true;	/* "do nothing" */
-					break;		/* concurrent update/delete */
+					result = TM_Ok;
+					break;
 				}
+				ExecUpdatePrepareSlot(resultRelInfo, newslot, context->estate);
 				result = ExecUpdateAct(context, resultRelInfo, tupleid, NULL,
-									   newslot, false, &updateCxt);
+									   newslot, mtstate->canSetTag, &updateCxt);
 				if (result == TM_Ok && updateCxt.updated)
 				{
 					ExecUpdateEpilogue(context, &updateCxt, resultRelInfo,
-									   tupleid, NULL, newslot);
+									   tupleid, NULL, newslot, recheckIndexes);
 					mtstate->mt_merge_updated += 1;
 				}
+
 				break;
 
 			case CMD_DELETE:
 				context->relaction = relaction;
 				if (!ExecDeletePrologue(context, resultRelInfo, tupleid,
-										NULL, NULL, &result))
+										NULL, NULL))
 				{
-					if (result == TM_Ok)
-						return true;	/* "do nothing" */
-					break;		/* concurrent update/delete */
+					result = TM_Ok;
+					break;
 				}
 				result = ExecDeleteAct(context, resultRelInfo, tupleid, false);
 				if (result == TM_Ok)
@@ -2973,13 +2971,35 @@ lmerge_matched:
 
 					/*
 					 * The target tuple was concurrently updated by some other
-					 * transaction. Run EvalPlanQual() with the new version of
-					 * the tuple. If it does not return a tuple, then we
-					 * switch to the NOT MATCHED list of actions. If it does
-					 * return a tuple and the join qual is still satisfied,
-					 * then we just need to recheck the MATCHED actions,
-					 * starting from the top, and execute the first qualifying
-					 * action.
+					 * transaction.
+					 */
+
+					/*
+					 * If cpUpdateRetrySlot is set, ExecCrossPartitionUpdate()
+					 * must have detected that the tuple was concurrently
+					 * updated, so we restart the search for an appropriate
+					 * WHEN MATCHED clause to process the updated tuple.
+					 *
+					 * In this case, ExecDelete() would already have performed
+					 * EvalPlanQual() on the latest version of the tuple,
+					 * which in turn would already have been loaded into
+					 * ri_oldTupleSlot, so no need to do either of those
+					 * things.
+					 *
+					 * XXX why do we not check the WHEN NOT MATCHED list in
+					 * this case?
+					 */
+					if (!TupIsNull(context->cpUpdateRetrySlot))
+						goto lmerge_matched;
+
+					/*
+					 * Otherwise, we run the EvalPlanQual() with the new
+					 * version of the tuple. If EvalPlanQual() does not return
+					 * a tuple, then we switch to the NOT MATCHED list of
+					 * actions. If it does return a tuple and the join qual is
+					 * still satisfied, then we just need to recheck the
+					 * MATCHED actions, starting from the top, and execute the
+					 * first qualifying action.
 					 */
 					resultRelationDesc = resultRelInfo->ri_RelationDesc;
 					lockmode = ExecUpdateLockMode(estate, resultRelInfo);
@@ -3355,6 +3375,25 @@ ExecInitMergeTupleSlots(ModifyTableState *mtstate,
 }
 
 /*
+ * Callback for ModifyTableContext->GetUpdateNewTuple for use by MERGE.  It
+ * computes the updated tuple by projecting from the current merge action's
+ * projection.
+ */
+static TupleTableSlot *
+mergeGetUpdateNewTuple(ResultRelInfo *relinfo,
+					   TupleTableSlot *planSlot,
+					   TupleTableSlot *oldSlot,
+					   MergeActionState *relaction)
+{
+	ExprContext *econtext = relaction->mas_proj->pi_exprContext;
+
+	econtext->ecxt_scantuple = oldSlot;
+	econtext->ecxt_innertuple = planSlot;
+
+	return ExecProject(relaction->mas_proj);
+}
+
+/*
  * Process BEFORE EACH STATEMENT triggers
  */
 static void
@@ -3509,7 +3548,7 @@ ExecPrepareTupleRouting(ModifyTableState *mtstate,
 	/*
 	 * Convert the tuple, if necessary.
 	 */
-	map = ExecGetRootToChildMap(partrel, estate);
+	map = partrel->ri_RootToPartitionMap;
 	if (map != NULL)
 	{
 		TupleTableSlot *new_slot = partrel->ri_PartitionTupleSlot;
@@ -3809,8 +3848,9 @@ ExecModifyTable(PlanState *pstate)
 													   oldSlot))
 						elog(ERROR, "failed to fetch tuple being updated");
 				}
-				slot = ExecGetUpdateNewTuple(resultRelInfo, context.planSlot,
-											 oldSlot);
+				slot = internalGetUpdateNewTuple(resultRelInfo, context.planSlot,
+												 oldSlot, NULL);
+				context.GetUpdateNewTuple = internalGetUpdateNewTuple;
 				context.relaction = NULL;
 
 				/* Now apply the update. */
@@ -4107,6 +4147,15 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 					elog(ERROR, "could not find junk wholerow column");
 			}
 		}
+
+		/*
+		 * For INSERT/UPDATE/MERGE, prepare to evaluate any generated columns.
+		 * We must do this now, even if we never insert or update any rows,
+		 * because we have to fill resultRelInfo->ri_extraUpdatedCols for
+		 * possible use by the trigger machinery.
+		 */
+		if (operation == CMD_INSERT || operation == CMD_UPDATE || operation == CMD_MERGE)
+			ExecInitStoredGenerated(resultRelInfo, estate, operation);
 	}
 
 	/*

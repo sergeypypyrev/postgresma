@@ -4,7 +4,7 @@
 
 #include "preproc_extern.h"
 
-static void output_escaped_str(char *str, bool quoted);
+static void output_escaped_str(char *cmd, bool quoted);
 
 void
 output_line_number(void)

@@ -497,20 +497,15 @@ check_indicator(struct ECPGtype *var)
 }
 
 struct typedefs *
-get_typedef(const char *name, bool noerror)
+get_typedef(char *name)
 {
 	struct typedefs *this;
 
-	for (this = types; this != NULL; this = this->next)
-	{
-		if (strcmp(this->name, name) == 0)
-			return this;
-	}
-
-	if (!noerror)
+	for (this = types; this && strcmp(this->name, name) != 0; this = this->next);
+	if (!this)
 		mmfatal(PARSE_ERROR, "unrecognized data type name \"%s\"", name);
 
-	return NULL;
+	return this;
 }
 
 void

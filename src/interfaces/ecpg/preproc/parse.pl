@@ -3,7 +3,7 @@
 # parser generator for ecpg version 2
 # call with backend parser as stdin
 #
-# Copyright (c) 2007-2023, PostgreSQL Global Development Group
+# Copyright (c) 2007-2022, PostgreSQL Global Development Group
 #
 # Written by Mike Aubury <mike.aubury@aubit.com>
 #            Michael Meskes <meskes@postgresql.org>
@@ -14,20 +14,10 @@
 
 use strict;
 use warnings;
-use Getopt::Long;
+no warnings 'uninitialized';
 
-my $srcdir  = '.';
-my $outfile = '';
-my $parser  = '';
-
-GetOptions(
-	'srcdir=s' => \$srcdir,
-	'output=s' => \$outfile,
-	'parser=s' => \$parser,) or die "wrong arguments";
-
-# open parser / output file early, to raise errors early
-open(my $parserfh, '<', $parser) or die "could not open parser file $parser";
-open(my $outfh, '>', $outfile) or die "could not open output file $outfile";
+my $path = shift @ARGV;
+$path = "." unless $path;
 
 my $copymode              = 0;
 my $brace_indent          = 0;
@@ -39,8 +29,7 @@ my $tokenmode             = 0;
 
 my (%buff, $infield, $comment, %tokens, %addons);
 my ($stmt_mode, @fields);
-my $line = '';
-my $non_term_id;
+my ($line,      $non_term_id);
 
 
 # some token have to be replaced by other symbols
@@ -55,11 +44,9 @@ my %replace_token = (
 
 # or in the block
 my %replace_string = (
-	'FORMAT_LA'      => 'format',
 	'NOT_LA'         => 'not',
 	'NULLS_LA'       => 'nulls',
 	'WITH_LA'        => 'with',
-	'WITHOUT_LA'     => 'without',
 	'TYPECAST'       => '::',
 	'DOT_DOT'        => '..',
 	'COLON_EQUALS'   => ':=',
@@ -139,17 +126,15 @@ dump_buffer('tokens');
 dump_buffer('types');
 dump_buffer('ecpgtype');
 dump_buffer('orig_tokens');
-print $outfh '%%',                "\n";
-print $outfh 'prog: statements;', "\n";
+print '%%',                "\n";
+print 'prog: statements;', "\n";
 dump_buffer('rules');
 include_file('trailer', 'ecpg.trailer');
 dump_buffer('trailer');
 
-close($parserfh);
-
 sub main
 {
-  line: while (<$parserfh>)
+  line: while (<>)
 	{
 		if (/ERRCODE_FEATURE_NOT_SUPPORTED/)
 		{
@@ -194,16 +179,6 @@ sub main
 
 		# Now split the line into individual fields
 		my @arr = split(' ');
-
-		if (!@arr)
-		{
-			# empty line: in tokenmode 1, emit an empty line, else ignore
-			if ($tokenmode == 1)
-			{
-				add_to_buffer('orig_tokens', '');
-			}
-			next line;
-		}
 
 		if ($arr[0] eq '%token' && $tokenmode == 0)
 		{
@@ -351,8 +326,7 @@ sub main
 
 			# Are we looking at a declaration of a non-terminal ?
 			if (($arr[$fieldIndexer] =~ /[A-Za-z0-9]+:/)
-				|| (   $fieldIndexer + 1 < scalar(@arr)
-					&& $arr[ $fieldIndexer + 1 ] eq ':'))
+				|| $arr[ $fieldIndexer + 1 ] eq ':')
 			{
 				$non_term_id = $arr[$fieldIndexer];
 				$non_term_id =~ tr/://d;
@@ -420,13 +394,11 @@ sub main
 			if (   $copymode
 				&& !$prec
 				&& !$comment
-				&& $fieldIndexer < scalar(@arr)
 				&& length($arr[$fieldIndexer])
 				&& $infield)
 			{
 				if ($arr[$fieldIndexer] ne 'Op'
-					&& ((   defined $tokens{ $arr[$fieldIndexer] }
-							&& $tokens{ $arr[$fieldIndexer] } > 0)
+					&& (   $tokens{ $arr[$fieldIndexer] } > 0
 						|| $arr[$fieldIndexer] =~ /'.+'/)
 					|| $stmt_mode == 1)
 				{
@@ -468,7 +440,7 @@ sub main
 sub include_file
 {
 	my ($buffer, $filename) = @_;
-	my $full = "$srcdir/$filename";
+	my $full = "$path/$filename";
 	open(my $fh, '<', $full) or die;
 	while (<$fh>)
 	{
@@ -485,12 +457,11 @@ sub include_addon
 	my $rec = $addons{$block};
 	return 0 unless $rec;
 
-	my $rectype = (defined $rec->{type}) ? $rec->{type} : '';
-	if ($rectype eq 'rule')
+	if ($rec->{type} eq 'rule')
 	{
 		dump_fields($stmt_mode, $fields, ' { ');
 	}
-	elsif ($rectype eq 'addon')
+	elsif ($rec->{type} eq 'addon')
 	{
 		add_to_buffer('rules', ' { ');
 	}
@@ -501,7 +472,7 @@ sub include_addon
 
 	push(@{ $buff{$buffer} }, @{ $rec->{lines} });
 
-	if ($rectype eq 'addon')
+	if ($rec->{type} eq 'addon')
 	{
 		dump_fields($stmt_mode, $fields, '');
 	}
@@ -525,9 +496,9 @@ sub add_to_buffer
 sub dump_buffer
 {
 	my ($buffer) = @_;
-	print $outfh '/* ', $buffer, ' */', "\n";
+	print '/* ', $buffer, ' */', "\n";
 	my $ref = $buff{$buffer};
-	print $outfh @$ref;
+	print @$ref;
 	return;
 }
 
@@ -679,7 +650,7 @@ sub dump_line
 
 sub preload_addons
 {
-	my $filename = $srcdir . "/ecpg.addons";
+	my $filename = $path . "/ecpg.addons";
 	open(my $fh, '<', $filename) or die;
 
 	# there may be multiple lines starting ECPG: and then multiple lines of code.

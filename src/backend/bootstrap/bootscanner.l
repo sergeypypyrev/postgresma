@@ -1,10 +1,10 @@
-%top{
+%{
 /*-------------------------------------------------------------------------
  *
  * bootscanner.l
  *	  a lexical scanner for the bootstrap parser
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,17 +15,11 @@
  */
 #include "postgres.h"
 
-/*
- * NB: include bootparse.h only AFTER including bootstrap.h, because bootstrap.h
- * includes node definitions needed for YYSTYPE.
- */
 #include "bootstrap/bootstrap.h"
-#include "bootparse.h"
 #include "utils/guc.h"
 
-}
-
-%{
+/* Not needed now that this file is compiled as part of bootparse. */
+/* #include "bootparse.h" */
 
 /* LCOV_EXCL_START */
 
@@ -58,7 +52,7 @@ id		[-A-Za-z0-9_]+
 sid		\'([^']|\'\')*\'
 
 /*
- * Keyword tokens return the keyword text (as a constant string) in boot_yylval.kw,
+ * Keyword tokens return the keyword text (as a constant string) in yylval.kw,
  * just in case that's needed because we want to treat the keyword as an
  * unreserved identifier.  Note that _null_ is not treated as a keyword
  * for this purpose; it's the one "reserved word" in the bootstrap syntax.
@@ -66,23 +60,23 @@ sid		\'([^']|\'\')*\'
  * Notice that all the keywords are case-sensitive, and for historical
  * reasons some must be upper case.
  *
- * String tokens return a palloc'd string in boot_yylval.str.
+ * String tokens return a palloc'd string in yylval.str.
  */
 
 %%
 
-open			{ boot_yylval.kw = "open"; return OPEN; }
+open			{ yylval.kw = "open"; return OPEN; }
 
-close			{ boot_yylval.kw = "close"; return XCLOSE; }
+close			{ yylval.kw = "close"; return XCLOSE; }
 
-create			{ boot_yylval.kw = "create"; return XCREATE; }
+create			{ yylval.kw = "create"; return XCREATE; }
 
-OID				{ boot_yylval.kw = "OID"; return OBJ_ID; }
-bootstrap		{ boot_yylval.kw = "bootstrap"; return XBOOTSTRAP; }
-shared_relation	{ boot_yylval.kw = "shared_relation"; return XSHARED_RELATION; }
-rowtype_oid		{ boot_yylval.kw = "rowtype_oid"; return XROWTYPE_OID; }
+OID				{ yylval.kw = "OID"; return OBJ_ID; }
+bootstrap		{ yylval.kw = "bootstrap"; return XBOOTSTRAP; }
+shared_relation	{ yylval.kw = "shared_relation"; return XSHARED_RELATION; }
+rowtype_oid		{ yylval.kw = "rowtype_oid"; return XROWTYPE_OID; }
 
-insert			{ boot_yylval.kw = "insert"; return INSERT_TUPLE; }
+insert			{ yylval.kw = "insert"; return INSERT_TUPLE; }
 
 _null_			{ return NULLVAL; }
 
@@ -96,25 +90,25 @@ _null_			{ return NULLVAL; }
 
 ^\#[^\n]*		;		/* drop everything after "#" for comments */
 
-declare			{ boot_yylval.kw = "declare"; return XDECLARE; }
-build			{ boot_yylval.kw = "build"; return XBUILD; }
-indices			{ boot_yylval.kw = "indices"; return INDICES; }
-unique			{ boot_yylval.kw = "unique"; return UNIQUE; }
-index			{ boot_yylval.kw = "index"; return INDEX; }
-on				{ boot_yylval.kw = "on"; return ON; }
-using			{ boot_yylval.kw = "using"; return USING; }
-toast			{ boot_yylval.kw = "toast"; return XTOAST; }
-FORCE			{ boot_yylval.kw = "FORCE"; return XFORCE; }
-NOT				{ boot_yylval.kw = "NOT"; return XNOT; }
-NULL			{ boot_yylval.kw = "NULL"; return XNULL; }
+declare			{ yylval.kw = "declare"; return XDECLARE; }
+build			{ yylval.kw = "build"; return XBUILD; }
+indices			{ yylval.kw = "indices"; return INDICES; }
+unique			{ yylval.kw = "unique"; return UNIQUE; }
+index			{ yylval.kw = "index"; return INDEX; }
+on				{ yylval.kw = "on"; return ON; }
+using			{ yylval.kw = "using"; return USING; }
+toast			{ yylval.kw = "toast"; return XTOAST; }
+FORCE			{ yylval.kw = "FORCE"; return XFORCE; }
+NOT				{ yylval.kw = "NOT"; return XNOT; }
+NULL			{ yylval.kw = "NULL"; return XNULL; }
 
 {id}			{
-					boot_yylval.str = pstrdup(yytext);
+					yylval.str = pstrdup(yytext);
 					return ID;
 				}
 {sid}			{
 					/* strip quotes and escapes */
-					boot_yylval.str = DeescapeQuotedString(yytext);
+					yylval.str = DeescapeQuotedString(yytext);
 					return ID;
 				}
 
@@ -127,7 +121,7 @@ NULL			{ boot_yylval.kw = "NULL"; return XNULL; }
 /* LCOV_EXCL_STOP */
 
 void
-boot_yyerror(const char *message)
+yyerror(const char *message)
 {
 	elog(ERROR, "%s at line %d", message, yyline);
 }

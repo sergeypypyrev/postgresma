@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/pgevent
 #
-# Copyright (c) 1996-2023, PostgreSQL Global Development Group
+# Copyright (c) 1996-2022, PostgreSQL Global Development Group
 #
 #-------------------------------------------------------------------------
 
@@ -17,8 +17,7 @@ ifeq ($(PORTNAME), win32)
 
 OBJS = \
 	pgevent.o \
-	pgmsgevent.o \
-	$(WIN32RES)
+	pgmsgevent.o
 NAME=pgevent
 
 SHLIB_LINK =
@@ -30,7 +29,7 @@ install: all install-lib
 
 include $(top_srcdir)/src/Makefile.shlib
 
-pgmsgevent.o: pgmsgevent.rc
+pgmsgevent.o: pgmsgevent.rc win32ver.rc
 	$(WINDRES) $< -o $@ --include-dir=$(top_builddir)/src/include --include-dir=$(top_srcdir)/src/include --include-dir=$(srcdir) --include-dir=.
 
 clean distclean: clean-lib

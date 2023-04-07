@@ -4,7 +4,7 @@
  *	   Replication slot management.
  *
  *
- * Copyright (c) 2012-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -41,7 +41,6 @@
 
 #include "access/transam.h"
 #include "access/xlog_internal.h"
-#include "common/file_utils.h"
 #include "common/string.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -97,8 +96,8 @@ ReplicationSlotCtlData *ReplicationSlotCtl = NULL;
 /* My backend's replication slot in the shared memory array */
 ReplicationSlot *MyReplicationSlot = NULL;
 
-/* GUC variable */
-int			max_replication_slots = 10; /* the maximum number of replication
+/* GUCs */
+int			max_replication_slots = 0;	/* the maximum number of replication
 										 * slots */
 
 static void ReplicationSlotShmemExit(int code, Datum arg);
@@ -108,7 +107,7 @@ static void ReplicationSlotDropPtr(ReplicationSlot *slot);
 /* internal persistency functions */
 static void RestoreSlotFromDisk(const char *name);
 static void CreateSlotOnDisk(ReplicationSlot *slot);
-static void SaveSlotToPath(ReplicationSlot *slot, const char *dir, int elevel);
+static void SaveSlotToPath(ReplicationSlot *slot, const char *path, int elevel);
 
 /*
  * Report shared-memory space needed by ReplicationSlotsShmemInit.
@@ -452,7 +451,7 @@ ReplicationSlotAcquire(const char *name, bool nowait)
 	ReplicationSlot *s;
 	int			active_pid;
 
-	Assert(name != NULL);
+	AssertArg(name != NULL);
 
 retry:
 	Assert(MyReplicationSlot == NULL);
@@ -1140,12 +1139,10 @@ CheckSlotRequirements(void)
 void
 CheckSlotPermissions(void)
 {
-	if (!has_rolreplication(GetUserId()))
+	if (!superuser() && !has_rolreplication(GetUserId()))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("permission denied to use replication slots"),
-				 errdetail("Only roles with the %s attribute may use replication slots.",
-						   "REPLICATION")));
+				 errmsg("must be superuser or replication role to use replication slots")));
 }
 
 /*
@@ -1330,12 +1327,8 @@ InvalidatePossiblyObsoleteSlot(ReplicationSlot *s, XLogRecPtr oldestLSN,
 			if (last_signaled_pid != active_pid)
 			{
 				ereport(LOG,
-						errmsg("terminating process %d to release replication slot \"%s\"",
-							   active_pid, NameStr(slotname)),
-						errdetail("The slot's restart_lsn %X/%X exceeds the limit by %llu bytes.",
-								  LSN_FORMAT_ARGS(restart_lsn),
-								  (unsigned long long) (oldestLSN - restart_lsn)),
-						errhint("You might need to increase max_slot_wal_keep_size."));
+						(errmsg("terminating process %d to release replication slot \"%s\"",
+								active_pid, NameStr(slotname))));
 
 				(void) kill(active_pid, SIGTERM);
 				last_signaled_pid = active_pid;
@@ -1372,12 +1365,9 @@ InvalidatePossiblyObsoleteSlot(ReplicationSlot *s, XLogRecPtr oldestLSN,
 			ReplicationSlotRelease();
 
 			ereport(LOG,
-					errmsg("invalidating obsolete replication slot \"%s\"",
-						   NameStr(slotname)),
-					errdetail("The slot's restart_lsn %X/%X exceeds the limit by %llu bytes.",
-							  LSN_FORMAT_ARGS(restart_lsn),
-							  (unsigned long long) (oldestLSN - restart_lsn)),
-					errhint("You might need to increase max_slot_wal_keep_size."));
+					(errmsg("invalidating slot \"%s\" because its restart_lsn %X/%X exceeds max_slot_wal_keep_size",
+							NameStr(slotname),
+							LSN_FORMAT_ARGS(restart_lsn))));
 
 			/* done with this slot for now */
 			break;
@@ -1487,18 +1477,17 @@ StartupReplicationSlots(void)
 	replication_dir = AllocateDir("pg_replslot");
 	while ((replication_de = ReadDir(replication_dir, "pg_replslot")) != NULL)
 	{
+		struct stat statbuf;
 		char		path[MAXPGPATH + 12];
-		PGFileType	de_type;
 
 		if (strcmp(replication_de->d_name, ".") == 0 ||
 			strcmp(replication_de->d_name, "..") == 0)
 			continue;
 
 		snprintf(path, sizeof(path), "pg_replslot/%s", replication_de->d_name);
-		de_type = get_dirent_type(path, replication_de, false, DEBUG1);
 
 		/* we're only creating directories here, skip if it's not our's */
-		if (de_type != PGFILETYPE_ERROR && de_type != PGFILETYPE_DIR)
+		if (lstat(path, &statbuf) == 0 && !S_ISDIR(statbuf.st_mode))
 			continue;
 
 		/* we crashed while a slot was being setup or deleted, clean up */

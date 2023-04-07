@@ -3,7 +3,7 @@
  * nodeCustom.c
  *		Routines to handle execution of custom scan node
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * ------------------------------------------------------------------------
@@ -29,7 +29,6 @@ CustomScanState *
 ExecInitCustomScan(CustomScan *cscan, EState *estate, int eflags)
 {
 	CustomScanState *css;
-	const TupleTableSlotOps *slotOps;
 	Relation	scan_rel = NULL;
 	Index		scanrelid = cscan->scan.scanrelid;
 	int			tlistvarno;
@@ -65,14 +64,6 @@ ExecInitCustomScan(CustomScan *cscan, EState *estate, int eflags)
 	}
 
 	/*
-	 * Use a custom slot if specified in CustomScanState or use virtual slot
-	 * otherwise.
-	 */
-	slotOps = css->slotOps;
-	if (!slotOps)
-		slotOps = &TTSOpsVirtual;
-
-	/*
 	 * Determine the scan tuple type.  If the custom scan provider provided a
 	 * targetlist describing the scan tuples, use that; else use base
 	 * relation's rowtype.
@@ -82,14 +73,14 @@ ExecInitCustomScan(CustomScan *cscan, EState *estate, int eflags)
 		TupleDesc	scan_tupdesc;
 
 		scan_tupdesc = ExecTypeFromTL(cscan->custom_scan_tlist);
-		ExecInitScanTupleSlot(estate, &css->ss, scan_tupdesc, slotOps);
+		ExecInitScanTupleSlot(estate, &css->ss, scan_tupdesc, &TTSOpsVirtual);
 		/* Node's targetlist will contain Vars with varno = INDEX_VAR */
 		tlistvarno = INDEX_VAR;
 	}
 	else
 	{
 		ExecInitScanTupleSlot(estate, &css->ss, RelationGetDescr(scan_rel),
-							  slotOps);
+							  &TTSOpsVirtual);
 		/* Node's targetlist will contain Vars with varno = scanrelid */
 		tlistvarno = scanrelid;
 	}

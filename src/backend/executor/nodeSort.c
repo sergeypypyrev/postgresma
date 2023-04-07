@@ -3,7 +3,7 @@
  * nodeSort.c
  *	  Routines to handle sorting of relations.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -198,8 +198,7 @@ ExecSort(PlanState *pstate)
 	{
 		ExecClearTuple(slot);
 		if (tuplesort_getdatum(tuplesortstate, ScanDirectionIsForward(dir),
-							   false, &(slot->tts_values[0]),
-							   &(slot->tts_isnull[0]), NULL))
+							   &(slot->tts_values[0]), &(slot->tts_isnull[0]), NULL))
 			ExecStoreVirtualTuple(slot);
 	}
 	else
@@ -279,10 +278,10 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	outerTupDesc = ExecGetResultType(outerPlanState(sortstate));
 
 	/*
-	 * We perform a Datum sort when we're sorting just a single column,
+	 * We perform a Datum sort when we're sorting just a single byval column,
 	 * otherwise we perform a tuple sort.
 	 */
-	if (outerTupDesc->natts == 1)
+	if (outerTupDesc->natts == 1 && TupleDescAttr(outerTupDesc, 0)->attbyval)
 		sortstate->datumSort = true;
 	else
 		sortstate->datumSort = false;

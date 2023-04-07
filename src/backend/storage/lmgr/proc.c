@@ -3,7 +3,7 @@
  * proc.c
  *	  routines to manage per-process shared memory data structure
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,6 +15,8 @@
 /*
  * Interface (a):
  *		ProcSleep(), ProcWakeup(),
+ *		ProcQueueAlloc() -- create a shm queue for sleeping processes
+ *		ProcQueueInit() -- create a queue without allocing memory
  *
  * Waiting for a lock causes the backend to be put to sleep.  Whoever releases
  * the lock wakes the process up again (and gives it an error code so it knows
@@ -171,10 +173,10 @@ InitProcGlobal(void)
 	 * Initialize the data structures.
 	 */
 	ProcGlobal->spins_per_delay = DEFAULT_SPINS_PER_DELAY;
-	dlist_init(&ProcGlobal->freeProcs);
-	dlist_init(&ProcGlobal->autovacFreeProcs);
-	dlist_init(&ProcGlobal->bgworkerFreeProcs);
-	dlist_init(&ProcGlobal->walsenderFreeProcs);
+	ProcGlobal->freeProcs = NULL;
+	ProcGlobal->autovacFreeProcs = NULL;
+	ProcGlobal->bgworkerFreeProcs = NULL;
+	ProcGlobal->walsenderFreeProcs = NULL;
 	ProcGlobal->startupBufferPinWaitBufId = -1;
 	ProcGlobal->walwriterLatch = NULL;
 	ProcGlobal->checkpointerLatch = NULL;
@@ -212,8 +214,6 @@ InitProcGlobal(void)
 
 	for (i = 0; i < TotalProcs; i++)
 	{
-		PGPROC	   *proc = &procs[i];
-
 		/* Common initialization for all PGPROCs, regardless of type. */
 
 		/*
@@ -223,11 +223,11 @@ InitProcGlobal(void)
 		 */
 		if (i < MaxBackends + NUM_AUXILIARY_PROCS)
 		{
-			proc->sem = PGSemaphoreCreate();
-			InitSharedLatch(&(proc->procLatch));
-			LWLockInitialize(&(proc->fpInfoLock), LWTRANCHE_LOCK_FASTPATH);
+			procs[i].sem = PGSemaphoreCreate();
+			InitSharedLatch(&(procs[i].procLatch));
+			LWLockInitialize(&(procs[i].fpInfoLock), LWTRANCHE_LOCK_FASTPATH);
 		}
-		proc->pgprocno = i;
+		procs[i].pgprocno = i;
 
 		/*
 		 * Newly created PGPROCs for normal backends, autovacuum and bgworkers
@@ -240,42 +240,46 @@ InitProcGlobal(void)
 		if (i < MaxConnections)
 		{
 			/* PGPROC for normal backend, add to freeProcs list */
-			dlist_push_head(&ProcGlobal->freeProcs, &proc->links);
-			proc->procgloballist = &ProcGlobal->freeProcs;
+			procs[i].links.next = (SHM_QUEUE *) ProcGlobal->freeProcs;
+			ProcGlobal->freeProcs = &procs[i];
+			procs[i].procgloballist = &ProcGlobal->freeProcs;
 		}
 		else if (i < MaxConnections + autovacuum_max_workers + 1)
 		{
 			/* PGPROC for AV launcher/worker, add to autovacFreeProcs list */
-			dlist_push_head(&ProcGlobal->autovacFreeProcs, &proc->links);
-			proc->procgloballist = &ProcGlobal->autovacFreeProcs;
+			procs[i].links.next = (SHM_QUEUE *) ProcGlobal->autovacFreeProcs;
+			ProcGlobal->autovacFreeProcs = &procs[i];
+			procs[i].procgloballist = &ProcGlobal->autovacFreeProcs;
 		}
 		else if (i < MaxConnections + autovacuum_max_workers + 1 + max_worker_processes)
 		{
 			/* PGPROC for bgworker, add to bgworkerFreeProcs list */
-			dlist_push_head(&ProcGlobal->bgworkerFreeProcs, &proc->links);
-			proc->procgloballist = &ProcGlobal->bgworkerFreeProcs;
+			procs[i].links.next = (SHM_QUEUE *) ProcGlobal->bgworkerFreeProcs;
+			ProcGlobal->bgworkerFreeProcs = &procs[i];
+			procs[i].procgloballist = &ProcGlobal->bgworkerFreeProcs;
 		}
 		else if (i < MaxBackends)
 		{
 			/* PGPROC for walsender, add to walsenderFreeProcs list */
-			dlist_push_head(&ProcGlobal->walsenderFreeProcs, &proc->links);
-			proc->procgloballist = &ProcGlobal->walsenderFreeProcs;
+			procs[i].links.next = (SHM_QUEUE *) ProcGlobal->walsenderFreeProcs;
+			ProcGlobal->walsenderFreeProcs = &procs[i];
+			procs[i].procgloballist = &ProcGlobal->walsenderFreeProcs;
 		}
 
 		/* Initialize myProcLocks[] shared memory queues. */
 		for (j = 0; j < NUM_LOCK_PARTITIONS; j++)
-			dlist_init(&(proc->myProcLocks[j]));
+			SHMQueueInit(&(procs[i].myProcLocks[j]));
 
 		/* Initialize lockGroupMembers list. */
-		dlist_init(&proc->lockGroupMembers);
+		dlist_init(&procs[i].lockGroupMembers);
 
 		/*
 		 * Initialize the atomic variables, otherwise, it won't be safe to
 		 * access them for backends that aren't currently in use.
 		 */
-		pg_atomic_init_u32(&(proc->procArrayGroupNext), INVALID_PGPROCNO);
-		pg_atomic_init_u32(&(proc->clogGroupNext), INVALID_PGPROCNO);
-		pg_atomic_init_u64(&(proc->waitStart), 0);
+		pg_atomic_init_u32(&(procs[i].procArrayGroupNext), INVALID_PGPROCNO);
+		pg_atomic_init_u32(&(procs[i].clogGroupNext), INVALID_PGPROCNO);
+		pg_atomic_init_u64(&(procs[i].waitStart), 0);
 	}
 
 	/*
@@ -296,7 +300,7 @@ InitProcGlobal(void)
 void
 InitProcess(void)
 {
-	dlist_head *procgloballist;
+	PGPROC	   *volatile *procgloballist;
 
 	/*
 	 * ProcGlobal should be set up already (if we are a backend, we inherit
@@ -329,9 +333,11 @@ InitProcess(void)
 
 	set_spins_per_delay(ProcGlobal->spins_per_delay);
 
-	if (!dlist_is_empty(procgloballist))
+	MyProc = *procgloballist;
+
+	if (MyProc != NULL)
 	{
-		MyProc = (PGPROC*) dlist_pop_head_node(procgloballist);
+		*procgloballist = (PGPROC *) MyProc->links.next;
 		SpinLockRelease(ProcStructLock);
 	}
 	else
@@ -372,7 +378,7 @@ InitProcess(void)
 	 * Initialize all fields of MyProc, except for those previously
 	 * initialized by InitProcGlobal.
 	 */
-	dlist_node_init(&MyProc->links);
+	SHMQueueElemInit(&(MyProc->links));
 	MyProc->waitStatus = PROC_WAIT_STATUS_OK;
 	MyProc->lxid = InvalidLocalTransactionId;
 	MyProc->fpVXIDLock = false;
@@ -391,7 +397,7 @@ InitProcess(void)
 	/* NB -- autovac launcher intentionally does not set IS_AUTOVACUUM */
 	if (IsAutoVacuumWorkerProcess())
 		MyProc->statusFlags |= PROC_IS_AUTOVACUUM;
-	MyProc->lwWaiting = LW_WS_NOT_WAITING;
+	MyProc->lwWaiting = false;
 	MyProc->lwWaitMode = 0;
 	MyProc->waitLock = NULL;
 	MyProc->waitProcLock = NULL;
@@ -402,7 +408,7 @@ InitProcess(void)
 
 		/* Last process should have released all locks. */
 		for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
-			Assert(dlist_is_empty(&(MyProc->myProcLocks[i])));
+			Assert(SHMQueueEmpty(&(MyProc->myProcLocks[i])));
 	}
 #endif
 	MyProc->recoveryConflictPending = false;
@@ -410,7 +416,7 @@ InitProcess(void)
 	/* Initialize fields for sync rep */
 	MyProc->waitLSN = 0;
 	MyProc->syncRepState = SYNC_REP_NOT_WAITING;
-	dlist_node_init(&MyProc->syncRepLinks);
+	SHMQueueElemInit(&(MyProc->syncRepLinks));
 
 	/* Initialize fields for group XID clearing. */
 	MyProc->procArrayGroupMember = false;
@@ -559,7 +565,7 @@ InitAuxiliaryProcess(void)
 	 * Initialize all fields of MyProc, except for those previously
 	 * initialized by InitProcGlobal.
 	 */
-	dlist_node_init(&MyProc->links);
+	SHMQueueElemInit(&(MyProc->links));
 	MyProc->waitStatus = PROC_WAIT_STATUS_OK;
 	MyProc->lxid = InvalidLocalTransactionId;
 	MyProc->fpVXIDLock = false;
@@ -573,7 +579,7 @@ InitAuxiliaryProcess(void)
 	MyProc->isBackgroundWorker = IsBackgroundWorker;
 	MyProc->delayChkptFlags = 0;
 	MyProc->statusFlags = 0;
-	MyProc->lwWaiting = LW_WS_NOT_WAITING;
+	MyProc->lwWaiting = false;
 	MyProc->lwWaitMode = 0;
 	MyProc->waitLock = NULL;
 	MyProc->waitProcLock = NULL;
@@ -584,7 +590,7 @@ InitAuxiliaryProcess(void)
 
 		/* Last process should have released all locks. */
 		for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
-			Assert(dlist_is_empty(&(MyProc->myProcLocks[i])));
+			Assert(SHMQueueEmpty(&(MyProc->myProcLocks[i])));
 	}
 #endif
 
@@ -645,33 +651,28 @@ GetStartupBufferPinWaitBufId(void)
 }
 
 /*
- * Check whether there are at least N free PGPROC objects.  If false is
- * returned, *nfree will be set to the number of free PGPROC objects.
- * Otherwise, *nfree will be set to n.
+ * Check whether there are at least N free PGPROC objects.
  *
  * Note: this is designed on the assumption that N will generally be small.
  */
 bool
-HaveNFreeProcs(int n, int *nfree)
+HaveNFreeProcs(int n)
 {
-	dlist_iter	iter;
-
-	Assert(n > 0);
-	Assert(nfree);
+	PGPROC	   *proc;
 
 	SpinLockAcquire(ProcStructLock);
 
-	*nfree = 0;
-	dlist_foreach(iter, &ProcGlobal->freeProcs)
+	proc = ProcGlobal->freeProcs;
+
+	while (n > 0 && proc != NULL)
 	{
-		(*nfree)++;
-		if (*nfree == n)
-			break;
+		proc = (PGPROC *) proc->links.next;
+		n--;
 	}
 
 	SpinLockRelease(ProcStructLock);
 
-	return (*nfree == n);
+	return (n <= 0);
 }
 
 /*
@@ -729,7 +730,7 @@ LockErrorCleanup(void)
 	partitionLock = LockHashPartitionLock(lockAwaited->hashcode);
 	LWLockAcquire(partitionLock, LW_EXCLUSIVE);
 
-	if (!dlist_node_is_detached(&MyProc->links))
+	if (MyProc->links.next != NULL)
 	{
 		/* We could not have been granted the lock yet */
 		RemoveFromWaitQueue(MyProc, lockAwaited->hashcode);
@@ -802,7 +803,7 @@ static void
 ProcKill(int code, Datum arg)
 {
 	PGPROC	   *proc;
-	dlist_head *procgloballist;
+	PGPROC	   *volatile *procgloballist;
 
 	Assert(MyProc != NULL);
 
@@ -815,7 +816,7 @@ ProcKill(int code, Datum arg)
 
 		/* Last process should have released all locks. */
 		for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
-			Assert(dlist_is_empty(&(MyProc->myProcLocks[i])));
+			Assert(SHMQueueEmpty(&(MyProc->myProcLocks[i])));
 	}
 #endif
 
@@ -831,7 +832,7 @@ ProcKill(int code, Datum arg)
 
 	/*
 	 * Detach from any lock group of which we are a member.  If the leader
-	 * exits before all other group members, its PGPROC will remain allocated
+	 * exist before all other group members, its PGPROC will remain allocated
 	 * until the last group process exits; that process must return the
 	 * leader's PGPROC to the appropriate list.
 	 */
@@ -852,7 +853,8 @@ ProcKill(int code, Datum arg)
 
 				/* Leader exited first; return its PGPROC. */
 				SpinLockAcquire(ProcStructLock);
-				dlist_push_head(procgloballist, &leader->links);
+				leader->links.next = (SHM_QUEUE *) *procgloballist;
+				*procgloballist = leader;
 				SpinLockRelease(ProcStructLock);
 			}
 		}
@@ -891,7 +893,8 @@ ProcKill(int code, Datum arg)
 		Assert(dlist_is_empty(&proc->lockGroupMembers));
 
 		/* Return PGPROC structure (and semaphore) to appropriate freelist */
-		dlist_push_tail(procgloballist, &proc->links);
+		proc->links.next = (SHM_QUEUE *) *procgloballist;
+		*procgloballist = proc;
 	}
 
 	/* Update shared estimate of spins_per_delay */
@@ -983,6 +986,44 @@ AuxiliaryPidGetProc(int pid)
 	return result;
 }
 
+/*
+ * ProcQueue package: routines for putting processes to sleep
+ *		and  waking them up
+ */
+
+/*
+ * ProcQueueAlloc -- alloc/attach to a shared memory process queue
+ *
+ * Returns: a pointer to the queue
+ * Side Effects: Initializes the queue if it wasn't there before
+ */
+#ifdef NOT_USED
+PROC_QUEUE *
+ProcQueueAlloc(const char *name)
+{
+	PROC_QUEUE *queue;
+	bool		found;
+
+	queue = (PROC_QUEUE *)
+		ShmemInitStruct(name, sizeof(PROC_QUEUE), &found);
+
+	if (!found)
+		ProcQueueInit(queue);
+
+	return queue;
+}
+#endif
+
+/*
+ * ProcQueueInit -- initialize a shared memory process queue
+ */
+void
+ProcQueueInit(PROC_QUEUE *queue)
+{
+	SHMQueueInit(&(queue->links));
+	queue->size = 0;
+}
+
 
 /*
  * ProcSleep -- put a process to sleep on the specified lock
@@ -1008,8 +1049,8 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 	PROCLOCK   *proclock = locallock->proclock;
 	uint32		hashcode = locallock->hashcode;
 	LWLock	   *partitionLock = LockHashPartitionLock(hashcode);
-	dclist_head *waitQueue = &lock->waitProcs;
-	PGPROC     *insert_before = NULL;
+	PROC_QUEUE *waitQueue = &(lock->waitProcs);
+	SHM_QUEUE  *waitQueuePos;
 	LOCKMASK	myHeldLocks = MyProc->heldLocks;
 	TimestampTz standbyWaitStart = 0;
 	bool		early_deadlock = false;
@@ -1017,6 +1058,7 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 	bool		logged_recovery_conflict = false;
 	ProcWaitStatus myWaitStatus;
 	PGPROC	   *leader = MyProc->lockGroupLeader;
+	int			i;
 
 	/*
 	 * If group locking is in use, locks held by members of my locking group
@@ -1030,16 +1072,18 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 	 */
 	if (leader != NULL)
 	{
-		dlist_iter	iter;
+		SHM_QUEUE  *procLocks = &(lock->procLocks);
+		PROCLOCK   *otherproclock;
 
-		dlist_foreach(iter, &lock->procLocks)
+		otherproclock = (PROCLOCK *)
+			SHMQueueNext(procLocks, procLocks, offsetof(PROCLOCK, lockLink));
+		while (otherproclock != NULL)
 		{
-			PROCLOCK   *otherproclock;
-
-			otherproclock = dlist_container(PROCLOCK, lockLink, iter.cur);
-
 			if (otherproclock->groupLeader == leader)
 				myHeldLocks |= otherproclock->holdMask;
+			otherproclock = (PROCLOCK *)
+				SHMQueueNext(procLocks, &otherproclock->lockLink,
+							 offsetof(PROCLOCK, lockLink));
 		}
 	}
 
@@ -1060,14 +1104,15 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 	 * we are only considering the part of the wait queue before my insertion
 	 * point.
 	 */
-	if (myHeldLocks != 0 && !dclist_is_empty(waitQueue))
+	if (myHeldLocks != 0 && waitQueue->size > 0)
 	{
 		LOCKMASK	aheadRequests = 0;
-		dlist_iter	iter;
+		SHM_QUEUE  *proc_node;
 
-		dclist_foreach(iter, waitQueue)
+		proc_node = waitQueue->links.next;
+		for (i = 0; i < waitQueue->size; i++)
 		{
-			PGPROC	   *proc = dlist_container(PGPROC, links, iter.cur);
+			PGPROC	   *proc = (PGPROC *) proc_node;
 
 			/*
 			 * If we're part of the same locking group as this waiter, its
@@ -1075,8 +1120,10 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 			 * aheadRequests.
 			 */
 			if (leader != NULL && leader == proc->lockGroupLeader)
+			{
+				proc_node = proc->links.next;
 				continue;
-
+			}
 			/* Must he wait for me? */
 			if (lockMethodTable->conflictTab[proc->waitLockMode] & myHeldLocks)
 			{
@@ -1104,23 +1151,31 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 					GrantAwaitedLock();
 					return PROC_WAIT_STATUS_OK;
 				}
-
-				/* Put myself into wait queue before conflicting process */
-				insert_before = proc;
+				/* Break out of loop to put myself before him */
 				break;
 			}
 			/* Nope, so advance to next waiter */
 			aheadRequests |= LOCKBIT_ON(proc->waitLockMode);
+			proc_node = proc->links.next;
 		}
+
+		/*
+		 * If we iterated through the whole queue, cur points to the waitQueue
+		 * head, so we will insert at tail of queue as desired.
+		 */
+		waitQueuePos = proc_node;
+	}
+	else
+	{
+		/* I hold no locks, so I can't push in front of anyone. */
+		waitQueuePos = &waitQueue->links;
 	}
 
 	/*
 	 * Insert self into queue, at the position determined above.
 	 */
-	if (insert_before)
-		dclist_insert_before(waitQueue, &insert_before->links, &MyProc->links);
-	else
-		dclist_push_tail(waitQueue, &MyProc->links);
+	SHMQueueInsertBefore(waitQueuePos, &MyProc->links);
+	waitQueue->size++;
 
 	lock->waitMask |= LOCKBIT_ON(lockmode);
 
@@ -1398,8 +1453,8 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 			long		secs;
 			int			usecs;
 			long		msecs;
-			dlist_iter	proc_iter;
-			PROCLOCK   *curproclock;
+			SHM_QUEUE  *procLocks;
+			PROCLOCK   *proclock;
 			bool		first_holder = true,
 						first_waiter = true;
 			int			lockHoldersNum = 0;
@@ -1428,41 +1483,45 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 
 			LWLockAcquire(partitionLock, LW_SHARED);
 
-			dlist_foreach(proc_iter, &lock->procLocks)
-			{
-				curproclock =
-					dlist_container(PROCLOCK, lockLink, proc_iter.cur);
+			procLocks = &(lock->procLocks);
+			proclock = (PROCLOCK *) SHMQueueNext(procLocks, procLocks,
+												 offsetof(PROCLOCK, lockLink));
 
+			while (proclock)
+			{
 				/*
-				 * we are a waiter if myProc->waitProcLock == curproclock; we
-				 * are a holder if it is NULL or something different
+				 * we are a waiter if myProc->waitProcLock == proclock; we are
+				 * a holder if it is NULL or something different
 				 */
-				if (curproclock->tag.myProc->waitProcLock == curproclock)
+				if (proclock->tag.myProc->waitProcLock == proclock)
 				{
 					if (first_waiter)
 					{
 						appendStringInfo(&lock_waiters_sbuf, "%d",
-										 curproclock->tag.myProc->pid);
+										 proclock->tag.myProc->pid);
 						first_waiter = false;
 					}
 					else
 						appendStringInfo(&lock_waiters_sbuf, ", %d",
-										 curproclock->tag.myProc->pid);
+										 proclock->tag.myProc->pid);
 				}
 				else
 				{
 					if (first_holder)
 					{
 						appendStringInfo(&lock_holders_sbuf, "%d",
-										 curproclock->tag.myProc->pid);
+										 proclock->tag.myProc->pid);
 						first_holder = false;
 					}
 					else
 						appendStringInfo(&lock_holders_sbuf, ", %d",
-										 curproclock->tag.myProc->pid);
+										 proclock->tag.myProc->pid);
 
 					lockHoldersNum++;
 				}
+
+				proclock = (PROCLOCK *) SHMQueueNext(procLocks, &proclock->lockLink,
+													 offsetof(PROCLOCK, lockLink));
 			}
 
 			LWLockRelease(partitionLock);
@@ -1597,6 +1656,7 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
  * ProcWakeup -- wake up a process by setting its latch.
  *
  *	 Also remove the process from the wait queue and set its links invalid.
+ *	 RETURN: the next process in the wait queue.
  *
  * The appropriate lock partition lock must be held by caller.
  *
@@ -1605,16 +1665,23 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
  * to twiddle the lock's request counts too --- see RemoveFromWaitQueue.
  * Hence, in practice the waitStatus parameter must be PROC_WAIT_STATUS_OK.
  */
-void
+PGPROC *
 ProcWakeup(PGPROC *proc, ProcWaitStatus waitStatus)
 {
-	if (dlist_node_is_detached(&proc->links))
-		return;
+	PGPROC	   *retProc;
 
+	/* Proc should be sleeping ... */
+	if (proc->links.prev == NULL ||
+		proc->links.next == NULL)
+		return NULL;
 	Assert(proc->waitStatus == PROC_WAIT_STATUS_WAITING);
 
+	/* Save next process before we zap the list link */
+	retProc = (PGPROC *) proc->links.next;
+
 	/* Remove process from wait queue */
-	dclist_delete_from_thoroughly(&proc->waitLock->waitProcs, &proc->links);
+	SHMQueueDelete(&(proc->links));
+	(proc->waitLock->waitProcs.size)--;
 
 	/* Clean up process' state and pass it the ok/fail signal */
 	proc->waitLock = NULL;
@@ -1624,6 +1691,8 @@ ProcWakeup(PGPROC *proc, ProcWaitStatus waitStatus)
 
 	/* And awaken it */
 	SetLatch(&proc->procLatch);
+
+	return retProc;
 }
 
 /*
@@ -1636,16 +1705,20 @@ ProcWakeup(PGPROC *proc, ProcWaitStatus waitStatus)
 void
 ProcLockWakeup(LockMethod lockMethodTable, LOCK *lock)
 {
-	dclist_head *waitQueue = &lock->waitProcs;
+	PROC_QUEUE *waitQueue = &(lock->waitProcs);
+	int			queue_size = waitQueue->size;
+	PGPROC	   *proc;
 	LOCKMASK	aheadRequests = 0;
-	dlist_mutable_iter miter;
 
-	if (dclist_is_empty(waitQueue))
+	Assert(queue_size >= 0);
+
+	if (queue_size == 0)
 		return;
 
-	dclist_foreach_modify(miter, waitQueue)
+	proc = (PGPROC *) waitQueue->links.next;
+
+	while (queue_size-- > 0)
 	{
-		PGPROC	   *proc = dlist_container(PGPROC, links, miter.cur);
 		LOCKMODE	lockmode = proc->waitLockMode;
 
 		/*
@@ -1658,18 +1731,25 @@ ProcLockWakeup(LockMethod lockMethodTable, LOCK *lock)
 		{
 			/* OK to waken */
 			GrantLock(lock, proc->waitProcLock, lockmode);
-			/* removes proc from the lock's waiting process queue */
-			ProcWakeup(proc, PROC_WAIT_STATUS_OK);
+			proc = ProcWakeup(proc, PROC_WAIT_STATUS_OK);
+
+			/*
+			 * ProcWakeup removes proc from the lock's waiting process queue
+			 * and returns the next proc in chain; don't use proc's next-link,
+			 * because it's been cleared.
+			 */
 		}
 		else
 		{
 			/*
-			 * Lock conflicts: Don't wake, but remember requested mode for
-			 * later checks.
+			 * Cannot wake this guy. Remember his request for later checks.
 			 */
 			aheadRequests |= LOCKBIT_ON(lockmode);
+			proc = (PGPROC *) proc->links.next;
 		}
 	}
+
+	Assert(waitQueue->size >= 0);
 }
 
 /*

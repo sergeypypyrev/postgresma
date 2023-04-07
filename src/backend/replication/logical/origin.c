@@ -3,7 +3,7 @@
  * origin.c
  *	  Logical replication progress tracking support.
  *
- * Copyright (c) 2013-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/origin.c
@@ -77,7 +77,6 @@
 #include "access/xloginsert.h"
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"
-#include "catalog/pg_subscription.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "nodes/execnodes.h"
@@ -195,17 +194,6 @@ replorigin_check_prerequisites(bool check_slots, bool recoveryOK)
 				 errmsg("cannot manipulate replication origins during recovery")));
 }
 
-
-/*
- * IsReservedOriginName
- *		True iff name is either "none" or "any".
- */
-static bool
-IsReservedOriginName(const char *name)
-{
-	return ((pg_strcasecmp(name, LOGICALREP_ORIGIN_NONE) == 0) ||
-			(pg_strcasecmp(name, LOGICALREP_ORIGIN_ANY) == 0));
-}
 
 /* ---------------------------------------------------------------------------
  * Functions for working with replication origins themselves.
@@ -338,14 +326,16 @@ replorigin_create(const char *roname)
  * Helper function to drop a replication origin.
  */
 static void
-replorigin_state_clear(RepOriginId roident, bool nowait)
+replorigin_drop_guts(Relation rel, RepOriginId roident, bool nowait)
 {
+	HeapTuple	tuple;
 	int			i;
 
 	/*
-	 * Clean up the slot state info, if there is any matching slot.
+	 * First, clean up the slot state info, if there is any matching slot.
 	 */
 restart:
+	tuple = NULL;
 	LWLockAcquire(ReplicationOriginLock, LW_EXCLUSIVE);
 
 	for (i = 0; i < max_replication_slots; i++)
@@ -400,6 +390,19 @@ restart:
 	}
 	LWLockRelease(ReplicationOriginLock);
 	ConditionVariableCancelSleep();
+
+	/*
+	 * Now, we can delete the catalog entry.
+	 */
+	tuple = SearchSysCache1(REPLORIGIDENT, ObjectIdGetDatum(roident));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for replication origin with ID %d",
+			 roident);
+
+	CatalogTupleDelete(rel, &tuple->t_self);
+	ReleaseSysCache(tuple);
+
+	CommandCounterIncrement();
 }
 
 /*
@@ -412,43 +415,24 @@ replorigin_drop_by_name(const char *name, bool missing_ok, bool nowait)
 {
 	RepOriginId roident;
 	Relation	rel;
-	HeapTuple	tuple;
 
 	Assert(IsTransactionState());
 
-	rel = table_open(ReplicationOriginRelationId, RowExclusiveLock);
+	/*
+	 * To interlock against concurrent drops, we hold ExclusiveLock on
+	 * pg_replication_origin till xact commit.
+	 *
+	 * XXX We can optimize this by acquiring the lock on a specific origin by
+	 * using LockSharedObject if required. However, for that, we first to
+	 * acquire a lock on ReplicationOriginRelationId, get the origin_id, lock
+	 * the specific origin and then re-check if the origin still exists.
+	 */
+	rel = table_open(ReplicationOriginRelationId, ExclusiveLock);
 
 	roident = replorigin_by_name(name, missing_ok);
 
-	/* Lock the origin to prevent concurrent drops. */
-	LockSharedObject(ReplicationOriginRelationId, roident, 0,
-					 AccessExclusiveLock);
-
-	tuple = SearchSysCache1(REPLORIGIDENT, ObjectIdGetDatum(roident));
-	if (!HeapTupleIsValid(tuple))
-	{
-		if (!missing_ok)
-			elog(ERROR, "cache lookup failed for replication origin with ID %d",
-				 roident);
-
-		/*
-		 * We don't need to retain the locks if the origin is already dropped.
-		 */
-		UnlockSharedObject(ReplicationOriginRelationId, roident, 0,
-						   AccessExclusiveLock);
-		table_close(rel, RowExclusiveLock);
-		return;
-	}
-
-	replorigin_state_clear(roident, nowait);
-
-	/*
-	 * Now, we can delete the catalog entry.
-	 */
-	CatalogTupleDelete(rel, &tuple->t_self);
-	ReleaseSysCache(tuple);
-
-	CommandCounterIncrement();
+	if (OidIsValid(roident))
+		replorigin_drop_guts(rel, roident, nowait);
 
 	/* We keep the lock on pg_replication_origin until commit */
 	table_close(rel, NoLock);
@@ -1079,20 +1063,12 @@ ReplicationOriginExitCleanup(int code, Datum arg)
  * array doesn't have to be searched when calling
  * replorigin_session_advance().
  *
- * Normally only one such cached origin can exist per process so the cached
- * value can only be set again after the previous value is torn down with
- * replorigin_session_reset(). For this normal case pass acquired_by = 0
- * (meaning the slot is not allowed to be already acquired by another process).
- *
- * However, sometimes multiple processes can safely re-use the same origin slot
- * (for example, multiple parallel apply processes can safely use the same
- * origin, provided they maintain commit order by allowing only one process to
- * commit at a time). For this case the first process must pass acquired_by =
- * 0, and then the other processes sharing that same origin can pass
- * acquired_by = PID of the first process.
+ * Obviously only one such cached origin can exist per process and the current
+ * cached value can only be set again after the previous value is torn down
+ * with replorigin_session_reset().
  */
 void
-replorigin_session_setup(RepOriginId node, int acquired_by)
+replorigin_session_setup(RepOriginId node)
 {
 	static bool registered_cleanup;
 	int			i;
@@ -1134,7 +1110,7 @@ replorigin_session_setup(RepOriginId node, int acquired_by)
 		if (curstate->roident != node)
 			continue;
 
-		else if (curstate->acquired_by != 0 && acquired_by == 0)
+		else if (curstate->acquired_by != 0)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_IN_USE),
@@ -1165,11 +1141,7 @@ replorigin_session_setup(RepOriginId node, int acquired_by)
 
 	Assert(session_replication_state->roident != InvalidRepOriginId);
 
-	if (acquired_by == 0)
-		session_replication_state->acquired_by = MyProcPid;
-	else if (session_replication_state->acquired_by != acquired_by)
-		elog(ERROR, "could not find replication state slot for replication origin with OID %u which was acquired by %d",
-			 node, acquired_by);
+	session_replication_state->acquired_by = MyProcPid;
 
 	LWLockRelease(ReplicationOriginLock);
 
@@ -1272,17 +1244,13 @@ pg_replication_origin_create(PG_FUNCTION_ARGS)
 
 	name = text_to_cstring((text *) DatumGetPointer(PG_GETARG_DATUM(0)));
 
-	/*
-	 * Replication origins "any and "none" are reserved for system options.
-	 * The origins "pg_xxx" are reserved for internal use.
-	 */
-	if (IsReservedName(name) || IsReservedOriginName(name))
+	/* Replication origins "pg_xxx" are reserved for internal use */
+	if (IsReservedName(name))
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("replication origin name \"%s\" is reserved",
 						name),
-				 errdetail("Origin names \"%s\", \"%s\", and names starting with \"pg_\" are reserved.",
-						   LOGICALREP_ORIGIN_ANY, LOGICALREP_ORIGIN_NONE)));
+				 errdetail("Origin names starting with \"pg_\" are reserved.")));
 
 	/*
 	 * If built with appropriate switch, whine when regression-testing
@@ -1353,7 +1321,7 @@ pg_replication_origin_session_setup(PG_FUNCTION_ARGS)
 
 	name = text_to_cstring((text *) DatumGetPointer(PG_GETARG_DATUM(0)));
 	origin = replorigin_by_name(name, false);
-	replorigin_session_setup(origin, 0);
+	replorigin_session_setup(origin);
 
 	replorigin_session_origin = origin;
 

@@ -4,7 +4,7 @@
  * bootparse.y
  *	  yacc grammar for the "bootstrap" mode (BKI file format)
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -36,7 +36,10 @@
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,
  * so we can easily have it use palloc instead of malloc.  This prevents
- * memory leaks if we error out during parsing.
+ * memory leaks if we error out during parsing.  Note this only works with
+ * bison >= 2.0.  However, in bison 1.875 the default is to use alloca()
+ * if possible, so there's not really much problem anyhow, at least if
+ * you're building with gcc.
  */
 #define YYMALLOC palloc
 #define YYFREE   pfree
@@ -284,9 +287,9 @@ Boot_DeclareIndexStmt:
 					stmt->excludeOpNames = NIL;
 					stmt->idxcomment = NULL;
 					stmt->indexOid = InvalidOid;
-					stmt->oldNumber = InvalidRelFileNumber;
+					stmt->oldNode = InvalidOid;
 					stmt->oldCreateSubid = InvalidSubTransactionId;
-					stmt->oldFirstRelfilelocatorSubid = InvalidSubTransactionId;
+					stmt->oldFirstRelfilenodeSubid = InvalidSubTransactionId;
 					stmt->unique = false;
 					stmt->primary = false;
 					stmt->isconstraint = false;
@@ -306,7 +309,6 @@ Boot_DeclareIndexStmt:
 								$4,
 								InvalidOid,
 								InvalidOid,
-								-1,
 								false,
 								false,
 								false,
@@ -337,9 +339,9 @@ Boot_DeclareUniqueIndexStmt:
 					stmt->excludeOpNames = NIL;
 					stmt->idxcomment = NULL;
 					stmt->indexOid = InvalidOid;
-					stmt->oldNumber = InvalidRelFileNumber;
+					stmt->oldNode = InvalidOid;
 					stmt->oldCreateSubid = InvalidSubTransactionId;
-					stmt->oldFirstRelfilelocatorSubid = InvalidSubTransactionId;
+					stmt->oldFirstRelfilenodeSubid = InvalidSubTransactionId;
 					stmt->unique = true;
 					stmt->primary = false;
 					stmt->isconstraint = false;
@@ -359,7 +361,6 @@ Boot_DeclareUniqueIndexStmt:
 								$5,
 								InvalidOid,
 								InvalidOid,
-								-1,
 								false,
 								false,
 								false,
@@ -487,3 +488,5 @@ boot_ident:
 		| XNULL			{ $$ = pstrdup($1); }
 		;
 %%
+
+#include "bootscanner.c"

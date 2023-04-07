@@ -20,7 +20,7 @@
  * appropriate value for a free lock.  The meaning of the variable is up to
  * the caller, the lightweight lock code just assigns and compares it.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -108,9 +108,6 @@ extern slock_t *ShmemLock;
 /* Must be greater than MAX_BACKENDS - which is 2^23-1, so we're fine. */
 #define LW_SHARED_MASK				((uint32) ((1 << 24)-1))
 
-StaticAssertDecl(LW_VAL_EXCLUSIVE > (uint32) MAX_BACKENDS,
-				 "MAX_BACKENDS too big for lwlock.c");
-
 /*
  * There are three sorts of LWLock "tranches":
  *
@@ -186,10 +183,6 @@ static const char *const BuiltinTrancheNames[] = {
 	"PgStatsHash",
 	/* LWTRANCHE_PGSTATS_DATA: */
 	"PgStatsData",
-	/* LWTRANCHE_LAUNCHER_DSA: */
-	"LogicalRepLauncherDSA",
-	/* LWTRANCHE_LAUNCHER_HASH: */
-	"LogicalRepLauncherHash",
 };
 
 StaticAssertDecl(lengthof(BuiltinTrancheNames) ==
@@ -473,6 +466,12 @@ LWLockShmemSize(void)
 void
 CreateLWLocks(void)
 {
+	StaticAssertStmt(LW_VAL_EXCLUSIVE > (uint32) MAX_BACKENDS,
+					 "MAX_BACKENDS too big for lwlock.c");
+
+	StaticAssertStmt(sizeof(LWLock) <= LWLOCK_PADDED_SIZE,
+					 "Miscalculated LWLock padding");
+
 	if (!IsUnderPostmaster)
 	{
 		Size		spaceLocks = LWLockShmemSize();
@@ -669,8 +668,13 @@ LWLockRegisterTranche(int tranche_id, const char *tranche_name)
 				MemoryContextAllocZero(TopMemoryContext,
 									   newalloc * sizeof(char *));
 		else
-			LWLockTrancheNames =
-				repalloc0_array(LWLockTrancheNames, const char *, LWLockTrancheNamesAllocated, newalloc);
+		{
+			LWLockTrancheNames = (const char **)
+				repalloc(LWLockTrancheNames, newalloc * sizeof(char *));
+			memset(LWLockTrancheNames + LWLockTrancheNamesAllocated,
+				   0,
+				   (newalloc - LWLockTrancheNamesAllocated) * sizeof(char *));
+		}
 		LWLockTrancheNamesAllocated = newalloc;
 	}
 
@@ -812,7 +816,7 @@ LWLockAttemptLock(LWLock *lock, LWLockMode mode)
 {
 	uint32		old_state;
 
-	Assert(mode == LW_EXCLUSIVE || mode == LW_SHARED);
+	AssertArg(mode == LW_EXCLUSIVE || mode == LW_SHARED);
 
 	/*
 	 * Read once outside the loop, later iterations will get the newer value
@@ -984,15 +988,6 @@ LWLockWakeup(LWLock *lock)
 		}
 
 		/*
-		 * Signal that the process isn't on the wait list anymore. This allows
-		 * LWLockDequeueSelf() to remove itself of the waitlist with a
-		 * proclist_delete(), rather than having to check if it has been
-		 * removed from the list.
-		 */
-		Assert(waiter->lwWaiting == LW_WS_WAITING);
-		waiter->lwWaiting = LW_WS_PENDING_WAKEUP;
-
-		/*
 		 * Once we've woken up an exclusive lock, there's no point in waking
 		 * up anybody else.
 		 */
@@ -1049,7 +1044,7 @@ LWLockWakeup(LWLock *lock)
 		 * another lock.
 		 */
 		pg_write_barrier();
-		waiter->lwWaiting = LW_WS_NOT_WAITING;
+		waiter->lwWaiting = false;
 		PGSemaphoreUnlock(waiter->sem);
 	}
 }
@@ -1070,7 +1065,7 @@ LWLockQueueSelf(LWLock *lock, LWLockMode mode)
 	if (MyProc == NULL)
 		elog(PANIC, "cannot wait without a PGPROC structure");
 
-	if (MyProc->lwWaiting != LW_WS_NOT_WAITING)
+	if (MyProc->lwWaiting)
 		elog(PANIC, "queueing for lock while waiting on another one");
 
 	LWLockWaitListLock(lock);
@@ -1078,7 +1073,7 @@ LWLockQueueSelf(LWLock *lock, LWLockMode mode)
 	/* setting the flag is protected by the spinlock */
 	pg_atomic_fetch_or_u32(&lock->state, LW_FLAG_HAS_WAITERS);
 
-	MyProc->lwWaiting = LW_WS_WAITING;
+	MyProc->lwWaiting = true;
 	MyProc->lwWaitMode = mode;
 
 	/* LW_WAIT_UNTIL_FREE waiters are always at the front of the queue */
@@ -1105,7 +1100,8 @@ LWLockQueueSelf(LWLock *lock, LWLockMode mode)
 static void
 LWLockDequeueSelf(LWLock *lock)
 {
-	bool		on_waitlist;
+	bool		found = false;
+	proclist_mutable_iter iter;
 
 #ifdef LWLOCK_STATS
 	lwlock_stats *lwstats;
@@ -1118,13 +1114,18 @@ LWLockDequeueSelf(LWLock *lock)
 	LWLockWaitListLock(lock);
 
 	/*
-	 * Remove ourselves from the waitlist, unless we've already been
-	 * removed. The removal happens with the wait list lock held, so there's
-	 * no race in this check.
+	 * Can't just remove ourselves from the list, but we need to iterate over
+	 * all entries as somebody else could have dequeued us.
 	 */
-	on_waitlist = MyProc->lwWaiting == LW_WS_WAITING;
-	if (on_waitlist)
-		proclist_delete(&lock->waiters, MyProc->pgprocno, lwWaitLink);
+	proclist_foreach_modify(iter, &lock->waiters, lwWaitLink)
+	{
+		if (iter.cur == MyProc->pgprocno)
+		{
+			found = true;
+			proclist_delete(&lock->waiters, iter.cur, lwWaitLink);
+			break;
+		}
+	}
 
 	if (proclist_is_empty(&lock->waiters) &&
 		(pg_atomic_read_u32(&lock->state) & LW_FLAG_HAS_WAITERS) != 0)
@@ -1136,8 +1137,8 @@ LWLockDequeueSelf(LWLock *lock)
 	LWLockWaitListUnlock(lock);
 
 	/* clear waiting state again, nice for debugging */
-	if (on_waitlist)
-		MyProc->lwWaiting = LW_WS_NOT_WAITING;
+	if (found)
+		MyProc->lwWaiting = false;
 	else
 	{
 		int			extraWaits = 0;
@@ -1161,7 +1162,7 @@ LWLockDequeueSelf(LWLock *lock)
 		for (;;)
 		{
 			PGSemaphoreLock(MyProc->sem);
-			if (MyProc->lwWaiting == LW_WS_NOT_WAITING)
+			if (!MyProc->lwWaiting)
 				break;
 			extraWaits++;
 		}
@@ -1203,7 +1204,7 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 	lwstats = get_lwlock_stats_entry(lock);
 #endif
 
-	Assert(mode == LW_SHARED || mode == LW_EXCLUSIVE);
+	AssertArg(mode == LW_SHARED || mode == LW_EXCLUSIVE);
 
 	PRINT_LWDEBUG("LWLockAcquire", lock, mode);
 
@@ -1312,7 +1313,7 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 		for (;;)
 		{
 			PGSemaphoreLock(proc->sem);
-			if (proc->lwWaiting == LW_WS_NOT_WAITING)
+			if (!proc->lwWaiting)
 				break;
 			extraWaits++;
 		}
@@ -1367,7 +1368,7 @@ LWLockConditionalAcquire(LWLock *lock, LWLockMode mode)
 {
 	bool		mustwait;
 
-	Assert(mode == LW_SHARED || mode == LW_EXCLUSIVE);
+	AssertArg(mode == LW_SHARED || mode == LW_EXCLUSIVE);
 
 	PRINT_LWDEBUG("LWLockConditionalAcquire", lock, mode);
 
@@ -1477,7 +1478,7 @@ LWLockAcquireOrWait(LWLock *lock, LWLockMode mode)
 			for (;;)
 			{
 				PGSemaphoreLock(proc->sem);
-				if (proc->lwWaiting == LW_WS_NOT_WAITING)
+				if (!proc->lwWaiting)
 					break;
 				extraWaits++;
 			}
@@ -1693,7 +1694,7 @@ LWLockWaitForVar(LWLock *lock, uint64 *valptr, uint64 oldval, uint64 *newval)
 		for (;;)
 		{
 			PGSemaphoreLock(proc->sem);
-			if (proc->lwWaiting == LW_WS_NOT_WAITING)
+			if (!proc->lwWaiting)
 				break;
 			extraWaits++;
 		}
@@ -1771,10 +1772,6 @@ LWLockUpdateVar(LWLock *lock, uint64 *valptr, uint64 val)
 
 		proclist_delete(&lock->waiters, iter.cur, lwWaitLink);
 		proclist_push_tail(&wakeup, iter.cur, lwWaitLink);
-
-		/* see LWLockWakeup() */
-		Assert(waiter->lwWaiting == LW_WS_WAITING);
-		waiter->lwWaiting = LW_WS_PENDING_WAKEUP;
 	}
 
 	/* We are done updating shared state of the lock itself. */
@@ -1790,7 +1787,7 @@ LWLockUpdateVar(LWLock *lock, uint64 *valptr, uint64 val)
 		proclist_delete(&wakeup, iter.cur, lwWaitLink);
 		/* check comment in LWLockWakeup() about this barrier */
 		pg_write_barrier();
-		waiter->lwWaiting = LW_WS_NOT_WAITING;
+		waiter->lwWaiting = false;
 		PGSemaphoreUnlock(waiter->sem);
 	}
 }
@@ -1916,13 +1913,13 @@ LWLockReleaseAll(void)
  * This is meant as debug support only.
  */
 bool
-LWLockHeldByMe(LWLock *lock)
+LWLockHeldByMe(LWLock *l)
 {
 	int			i;
 
 	for (i = 0; i < num_held_lwlocks; i++)
 	{
-		if (held_lwlocks[i].lock == lock)
+		if (held_lwlocks[i].lock == l)
 			return true;
 	}
 	return false;
@@ -1934,14 +1931,14 @@ LWLockHeldByMe(LWLock *lock)
  * This is meant as debug support only.
  */
 bool
-LWLockAnyHeldByMe(LWLock *lock, int nlocks, size_t stride)
+LWLockAnyHeldByMe(LWLock *l, int nlocks, size_t stride)
 {
 	char	   *held_lock_addr;
 	char	   *begin;
 	char	   *end;
 	int			i;
 
-	begin = (char *) lock;
+	begin = (char *) l;
 	end = begin + nlocks * stride;
 	for (i = 0; i < num_held_lwlocks; i++)
 	{
@@ -1960,13 +1957,13 @@ LWLockAnyHeldByMe(LWLock *lock, int nlocks, size_t stride)
  * This is meant as debug support only.
  */
 bool
-LWLockHeldByMeInMode(LWLock *lock, LWLockMode mode)
+LWLockHeldByMeInMode(LWLock *l, LWLockMode mode)
 {
 	int			i;
 
 	for (i = 0; i < num_held_lwlocks; i++)
 	{
-		if (held_lwlocks[i].lock == lock && held_lwlocks[i].mode == mode)
+		if (held_lwlocks[i].lock == l && held_lwlocks[i].mode == mode)
 			return true;
 	}
 	return false;

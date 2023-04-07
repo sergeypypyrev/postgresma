@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2023, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # To test successful data directory creation with an additional feature, first
 # try to elaborate the "successful creation" test instead of adding a test.
@@ -48,13 +48,7 @@ mkdir $datadir;
 	local (%ENV) = %ENV;
 	delete $ENV{TZ};
 
-	# while we are here, also exercise -T and -c options
-	command_ok(
-		[
-			'initdb', '-N', '-T', 'german', '-c',
-			'default_text_search_config=german',
-			'-X', $xlogdir, $datadir
-		],
+	command_ok([ 'initdb', '-N', '-T', 'german', '-X', $xlogdir, $datadir ],
 		'successful creation');
 
 	# Permissions on PGDATA should be default
@@ -103,6 +97,11 @@ SKIP:
 
 if ($ENV{with_icu} eq 'yes')
 {
+	command_fails_like(
+		[ 'initdb', '--no-sync', '--locale-provider=icu', "$tempdir/data2" ],
+		qr/initdb: error: ICU locale must be specified/,
+		'locale provider ICU requires --icu-locale');
+
 	command_ok(
 		[
 			'initdb',                '--no-sync',
@@ -117,7 +116,7 @@ if ($ENV{with_icu} eq 'yes')
 			'--locale-provider=icu', '--icu-locale=@colNumeric=lower',
 			"$tempdir/dataX"
 		],
-		qr/could not open collator for locale/,
+		qr/FATAL:  could not open collator for locale/,
 		'fails for invalid ICU locale');
 
 	command_fails_like(
@@ -128,24 +127,6 @@ if ($ENV{with_icu} eq 'yes')
 		],
 		qr/error: encoding mismatch/,
 		'fails for encoding not supported by ICU');
-
-	command_fails_like(
-		[
-			'initdb',                '--no-sync',
-			'--locale-provider=icu',
-			'--icu-locale=nonsense-nowhere', "$tempdir/dataX"
-		],
-		qr/error: locale "nonsense-nowhere" has unknown language "nonsense"/,
-		'fails for nonsense language');
-
-	command_fails_like(
-		[
-			'initdb',                '--no-sync',
-			'--locale-provider=icu',
-			'--icu-locale=@colNumeric=lower', "$tempdir/dataX"
-		],
-		qr/could not open collator for locale "und-u-kn-lower": U_ILLEGAL_ARGUMENT_ERROR/,
-		'fails for invalid collation argument');
 }
 else
 {
@@ -165,8 +146,5 @@ command_fails(
 		"$tempdir/dataX"
 	],
 	'fails for invalid option combination');
-
-command_fails([ 'initdb', '--no-sync', '--set', 'foo=bar', "$tempdir/dataX" ],
-	'fails for invalid --set option');
 
 done_testing();

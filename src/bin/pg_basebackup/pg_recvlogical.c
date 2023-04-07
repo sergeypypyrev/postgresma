@@ -3,7 +3,7 @@
  * pg_recvlogical.c - receive data from a logical decoding slot in a streaming
  *					  fashion and write it to a local file.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/pg_recvlogical.c
@@ -14,9 +14,11 @@
 
 #include <dirent.h>
 #include <limits.h>
-#include <sys/select.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#ifdef HAVE_SYS_SELECT_H
+#include <sys/select.h>
+#endif
 
 #include "access/xlog_internal.h"
 #include "common/fe_memutils.h"
@@ -650,11 +652,11 @@ error:
 #ifndef WIN32
 
 /*
- * When SIGINT/SIGTERM are caught, just tell the system to exit at the next
- * possible moment.
+ * When sigint is called, just tell the system to exit at the next possible
+ * moment.
  */
 static void
-sigexit_handler(SIGNAL_ARGS)
+sigint_handler(int signum)
 {
 	time_to_abort = true;
 }
@@ -663,7 +665,7 @@ sigexit_handler(SIGNAL_ARGS)
  * Trigger the output file to be reopened.
  */
 static void
-sighup_handler(SIGNAL_ARGS)
+sighup_handler(int signum)
 {
 	output_reopen = true;
 }
@@ -728,7 +730,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	while ((c = getopt_long(argc, argv, "E:f:F:ntvd:h:p:U:wWI:o:P:s:S:",
+	while ((c = getopt_long(argc, argv, "E:f:F:nvtd:h:p:U:wWI:o:P:s:S:",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -747,11 +749,11 @@ main(int argc, char **argv)
 			case 'n':
 				noloop = 1;
 				break;
-			case 't':
-				two_phase = true;
-				break;
 			case 'v':
 				verbose++;
+				break;
+			case 't':
+				two_phase = true;
 				break;
 /* connection options */
 			case 'd':
@@ -922,8 +924,7 @@ main(int argc, char **argv)
 	 * if one is needed, in GetConnection.)
 	 */
 #ifndef WIN32
-	pqsignal(SIGINT, sigexit_handler);
-	pqsignal(SIGTERM, sigexit_handler);
+	pqsignal(SIGINT, sigint_handler);
 	pqsignal(SIGHUP, sighup_handler);
 #endif
 

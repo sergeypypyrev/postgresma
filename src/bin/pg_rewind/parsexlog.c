@@ -3,7 +3,7 @@
  * parsexlog.c
  *	  Functions for reading Write-Ahead-Log
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *-------------------------------------------------------------------------
@@ -445,18 +445,18 @@ extractPageInfo(XLogReaderState *record)
 
 	for (block_id = 0; block_id <= XLogRecMaxBlockId(record); block_id++)
 	{
-		RelFileLocator rlocator;
+		RelFileNode rnode;
 		ForkNumber	forknum;
 		BlockNumber blkno;
 
 		if (!XLogRecGetBlockTagExtended(record, block_id,
-										&rlocator, &forknum, &blkno, NULL))
+										&rnode, &forknum, &blkno, NULL))
 			continue;
 
 		/* We only care about the main fork; others are copied in toto */
 		if (forknum != MAIN_FORKNUM)
 			continue;
 
-		process_target_wal_block_change(forknum, rlocator, blkno);
+		process_target_wal_block_change(forknum, rnode, blkno);
 	}
 }

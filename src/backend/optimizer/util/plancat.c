@@ -4,7 +4,7 @@
  *	   routines for accessing the system catalogs
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -75,8 +75,7 @@ static List *build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 static List *get_relation_statistics(RelOptInfo *rel, Relation relation);
 static void set_relation_partition_info(PlannerInfo *root, RelOptInfo *rel,
 										Relation relation);
-static PartitionScheme find_partition_scheme(PlannerInfo *root,
-											 Relation relation);
+static PartitionScheme find_partition_scheme(PlannerInfo *root, Relation rel);
 static void set_baserel_partition_key_exprs(Relation relation,
 											RelOptInfo *rel);
 static void set_baserel_partition_constraint(Relation relation,
@@ -109,9 +108,7 @@ static void set_baserel_partition_constraint(Relation relation,
  * If inhparent is true, all we need to do is set up the attr arrays:
  * the RelOptInfo actually represents the appendrel formed by an inheritance
  * tree, and so the parent rel's physical size and index information isn't
- * important for it, however, for partitioned tables, we do populate the
- * indexlist as the planner uses unique indexes as unique proofs for certain
- * optimizations.
+ * important for it.
  */
 void
 get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
@@ -177,14 +174,10 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 
 	/*
 	 * Make list of indexes.  Ignore indexes on system catalogs if told to.
-	 * Don't bother with indexes from traditional inheritance parents.  For
-	 * partitioned tables, we need a list of at least unique indexes as these
-	 * serve as unique proofs for certain planner optimizations.  However,
-	 * let's not discriminate here and just record all partitioned indexes
-	 * whether they're unique indexes or not.
+	 * Don't bother with indexes for an inheritance parent, either.
 	 */
-	if ((inhparent && relation->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
-		|| (IgnoreSystemIndexes && IsSystemRelation(relation)))
+	if (inhparent ||
+		(IgnoreSystemIndexes && IsSystemRelation(relation)))
 		hasindex = false;
 	else
 		hasindex = relation->rd_rel->relhasindex;
@@ -238,6 +231,16 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			}
 
 			/*
+			 * Ignore partitioned indexes, since they are not usable for
+			 * queries.
+			 */
+			if (indexRelation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
+			{
+				index_close(indexRelation, NoLock);
+				continue;
+			}
+
+			/*
 			 * If the index is valid, but cannot yet be used, ignore it; but
 			 * mark the plan we are generating as transient. See
 			 * src/backend/access/heap/README.HOT for discussion.
@@ -281,129 +284,105 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 
 			info->relam = indexRelation->rd_rel->relam;
 
+			/* We copy just the fields we need, not all of rd_indam */
+			amroutine = indexRelation->rd_indam;
+			info->amcanorderbyop = amroutine->amcanorderbyop;
+			info->amoptionalkey = amroutine->amoptionalkey;
+			info->amsearcharray = amroutine->amsearcharray;
+			info->amsearchnulls = amroutine->amsearchnulls;
+			info->amcanparallel = amroutine->amcanparallel;
+			info->amhasgettuple = (amroutine->amgettuple != NULL);
+			info->amhasgetbitmap = amroutine->amgetbitmap != NULL &&
+				relation->rd_tableam->scan_bitmap_next_block != NULL;
+			info->amcanmarkpos = (amroutine->ammarkpos != NULL &&
+								  amroutine->amrestrpos != NULL);
+			info->amcostestimate = amroutine->amcostestimate;
+			Assert(info->amcostestimate != NULL);
+
+			/* Fetch index opclass options */
+			info->opclassoptions = RelationGetIndexAttOptions(indexRelation, true);
+
 			/*
-			 * We don't have an AM for partitioned indexes, so we'll just
-			 * NULLify the AM related fields for those.
+			 * Fetch the ordering information for the index, if any.
 			 */
-			if (indexRelation->rd_rel->relkind != RELKIND_PARTITIONED_INDEX)
+			if (info->relam == BTREE_AM_OID)
 			{
-				/* We copy just the fields we need, not all of rd_indam */
-				amroutine = indexRelation->rd_indam;
-				info->amcanorderbyop = amroutine->amcanorderbyop;
-				info->amoptionalkey = amroutine->amoptionalkey;
-				info->amsearcharray = amroutine->amsearcharray;
-				info->amsearchnulls = amroutine->amsearchnulls;
-				info->amcanparallel = amroutine->amcanparallel;
-				info->amhasgettuple = (amroutine->amgettuple != NULL);
-				info->amhasgetbitmap = amroutine->amgetbitmap != NULL &&
-					relation->rd_tableam->scan_bitmap_next_block != NULL;
-				info->amcanmarkpos = (amroutine->ammarkpos != NULL &&
-									  amroutine->amrestrpos != NULL);
-				info->amcostestimate = amroutine->amcostestimate;
-				Assert(info->amcostestimate != NULL);
-
-				/* Fetch index opclass options */
-				info->opclassoptions = RelationGetIndexAttOptions(indexRelation, true);
-
 				/*
-				 * Fetch the ordering information for the index, if any.
+				 * If it's a btree index, we can use its opfamily OIDs
+				 * directly as the sort ordering opfamily OIDs.
 				 */
-				if (info->relam == BTREE_AM_OID)
+				Assert(amroutine->amcanorder);
+
+				info->sortopfamily = info->opfamily;
+				info->reverse_sort = (bool *) palloc(sizeof(bool) * nkeycolumns);
+				info->nulls_first = (bool *) palloc(sizeof(bool) * nkeycolumns);
+
+				for (i = 0; i < nkeycolumns; i++)
 				{
-					/*
-					 * If it's a btree index, we can use its opfamily OIDs
-					 * directly as the sort ordering opfamily OIDs.
-					 */
-					Assert(amroutine->amcanorder);
+					int16		opt = indexRelation->rd_indoption[i];
 
-					info->sortopfamily = info->opfamily;
-					info->reverse_sort = (bool *) palloc(sizeof(bool) * nkeycolumns);
-					info->nulls_first = (bool *) palloc(sizeof(bool) * nkeycolumns);
-
-					for (i = 0; i < nkeycolumns; i++)
-					{
-						int16		opt = indexRelation->rd_indoption[i];
-
-						info->reverse_sort[i] = (opt & INDOPTION_DESC) != 0;
-						info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
-					}
+					info->reverse_sort[i] = (opt & INDOPTION_DESC) != 0;
+					info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
 				}
-				else if (amroutine->amcanorder)
-				{
-					/*
-					 * Otherwise, identify the corresponding btree opfamilies
-					 * by trying to map this index's "<" operators into btree.
-					 * Since "<" uniquely defines the behavior of a sort
-					 * order, this is a sufficient test.
-					 *
-					 * XXX This method is rather slow and also requires the
-					 * undesirable assumption that the other index AM numbers
-					 * its strategies the same as btree.  It'd be better to
-					 * have a way to explicitly declare the corresponding
-					 * btree opfamily for each opfamily of the other index
-					 * type.  But given the lack of current or foreseeable
-					 * amcanorder index types, it's not worth expending more
-					 * effort on now.
-					 */
-					info->sortopfamily = (Oid *) palloc(sizeof(Oid) * nkeycolumns);
-					info->reverse_sort = (bool *) palloc(sizeof(bool) * nkeycolumns);
-					info->nulls_first = (bool *) palloc(sizeof(bool) * nkeycolumns);
+			}
+			else if (amroutine->amcanorder)
+			{
+				/*
+				 * Otherwise, identify the corresponding btree opfamilies by
+				 * trying to map this index's "<" operators into btree.  Since
+				 * "<" uniquely defines the behavior of a sort order, this is
+				 * a sufficient test.
+				 *
+				 * XXX This method is rather slow and also requires the
+				 * undesirable assumption that the other index AM numbers its
+				 * strategies the same as btree.  It'd be better to have a way
+				 * to explicitly declare the corresponding btree opfamily for
+				 * each opfamily of the other index type.  But given the lack
+				 * of current or foreseeable amcanorder index types, it's not
+				 * worth expending more effort on now.
+				 */
+				info->sortopfamily = (Oid *) palloc(sizeof(Oid) * nkeycolumns);
+				info->reverse_sort = (bool *) palloc(sizeof(bool) * nkeycolumns);
+				info->nulls_first = (bool *) palloc(sizeof(bool) * nkeycolumns);
 
-					for (i = 0; i < nkeycolumns; i++)
+				for (i = 0; i < nkeycolumns; i++)
+				{
+					int16		opt = indexRelation->rd_indoption[i];
+					Oid			ltopr;
+					Oid			btopfamily;
+					Oid			btopcintype;
+					int16		btstrategy;
+
+					info->reverse_sort[i] = (opt & INDOPTION_DESC) != 0;
+					info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
+
+					ltopr = get_opfamily_member(info->opfamily[i],
+												info->opcintype[i],
+												info->opcintype[i],
+												BTLessStrategyNumber);
+					if (OidIsValid(ltopr) &&
+						get_ordering_op_properties(ltopr,
+												   &btopfamily,
+												   &btopcintype,
+												   &btstrategy) &&
+						btopcintype == info->opcintype[i] &&
+						btstrategy == BTLessStrategyNumber)
 					{
-						int16		opt = indexRelation->rd_indoption[i];
-						Oid			ltopr;
-						Oid			btopfamily;
-						Oid			btopcintype;
-						int16		btstrategy;
-
-						info->reverse_sort[i] = (opt & INDOPTION_DESC) != 0;
-						info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
-
-						ltopr = get_opfamily_member(info->opfamily[i],
-													info->opcintype[i],
-													info->opcintype[i],
-													BTLessStrategyNumber);
-						if (OidIsValid(ltopr) &&
-							get_ordering_op_properties(ltopr,
-													   &btopfamily,
-													   &btopcintype,
-													   &btstrategy) &&
-							btopcintype == info->opcintype[i] &&
-							btstrategy == BTLessStrategyNumber)
-						{
-							/* Successful mapping */
-							info->sortopfamily[i] = btopfamily;
-						}
-						else
-						{
-							/* Fail ... quietly treat index as unordered */
-							info->sortopfamily = NULL;
-							info->reverse_sort = NULL;
-							info->nulls_first = NULL;
-							break;
-						}
+						/* Successful mapping */
+						info->sortopfamily[i] = btopfamily;
 					}
-				}
-				else
-				{
-					info->sortopfamily = NULL;
-					info->reverse_sort = NULL;
-					info->nulls_first = NULL;
+					else
+					{
+						/* Fail ... quietly treat index as unordered */
+						info->sortopfamily = NULL;
+						info->reverse_sort = NULL;
+						info->nulls_first = NULL;
+						break;
+					}
 				}
 			}
 			else
 			{
-				info->amcanorderbyop = false;
-				info->amoptionalkey = false;
-				info->amsearcharray = false;
-				info->amsearchnulls = false;
-				info->amcanparallel = false;
-				info->amhasgettuple = false;
-				info->amhasgetbitmap = false;
-				info->amcanmarkpos = false;
-				info->amcostestimate = NULL;
-
 				info->sortopfamily = NULL;
 				info->reverse_sort = NULL;
 				info->nulls_first = NULL;
@@ -436,45 +415,31 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			 * the number-of-tuples estimate to equal the parent table; if it
 			 * is partial then we have to use the same methods as we would for
 			 * a table, except we can be sure that the index is not larger
-			 * than the table.  We must ignore partitioned indexes here as as
-			 * there are not physical indexes.
+			 * than the table.
 			 */
-			if (indexRelation->rd_rel->relkind != RELKIND_PARTITIONED_INDEX)
+			if (info->indpred == NIL)
 			{
-				if (info->indpred == NIL)
-				{
-					info->pages = RelationGetNumberOfBlocks(indexRelation);
-					info->tuples = rel->tuples;
-				}
-				else
-				{
-					double		allvisfrac; /* dummy */
-
-					estimate_rel_size(indexRelation, NULL,
-									  &info->pages, &info->tuples, &allvisfrac);
-					if (info->tuples > rel->tuples)
-						info->tuples = rel->tuples;
-				}
-
-				if (info->relam == BTREE_AM_OID)
-				{
-					/*
-					 * For btrees, get tree height while we have the index
-					 * open
-					 */
-					info->tree_height = _bt_getrootheight(indexRelation, relation);
-				}
-				else
-				{
-					/* For other index types, just set it to "unknown" for now */
-					info->tree_height = -1;
-				}
+				info->pages = RelationGetNumberOfBlocks(indexRelation);
+				info->tuples = rel->tuples;
 			}
 			else
 			{
-				/* Zero these out for partitioned indexes */
-				info->pages = 0;
-				info->tuples = 0.0;
+				double		allvisfrac; /* dummy */
+
+				estimate_rel_size(indexRelation, NULL,
+								  &info->pages, &info->tuples, &allvisfrac);
+				if (info->tuples > rel->tuples)
+					info->tuples = rel->tuples;
+			}
+
+			if (info->relam == BTREE_AM_OID)
+			{
+				/* For btrees, get tree height while we have the index open */
+				info->tree_height = _bt_getrootheight(indexRelation);
+			}
+			else
+			{
+				/* For other index types, just set it to "unknown" for now */
 				info->tree_height = -1;
 			}
 

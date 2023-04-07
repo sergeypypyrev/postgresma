@@ -3,7 +3,7 @@
  * rowtypes.c
  *	  I/O and comparison functions for generic composite types.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -77,7 +77,6 @@ record_in(PG_FUNCTION_ARGS)
 	char	   *string = PG_GETARG_CSTRING(0);
 	Oid			tupType = PG_GETARG_OID(1);
 	int32		tupTypmod = PG_GETARG_INT32(2);
-	Node	   *escontext = fcinfo->context;
 	HeapTupleHeader result;
 	TupleDesc	tupdesc;
 	HeapTuple	tuple;
@@ -101,7 +100,7 @@ record_in(PG_FUNCTION_ARGS)
 	 * supply a valid typmod, and then we can do something useful for RECORD.
 	 */
 	if (tupType == RECORDOID && tupTypmod < 0)
-		ereturn(escontext, (Datum) 0,
+		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("input of anonymous composite types is not implemented")));
 
@@ -153,13 +152,10 @@ record_in(PG_FUNCTION_ARGS)
 	while (*ptr && isspace((unsigned char) *ptr))
 		ptr++;
 	if (*ptr++ != '(')
-	{
-		errsave(escontext,
+		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("malformed record literal: \"%s\"", string),
 				 errdetail("Missing left parenthesis.")));
-		goto fail;
-	}
 
 	initStringInfo(&buf);
 
@@ -185,13 +181,10 @@ record_in(PG_FUNCTION_ARGS)
 				ptr++;
 			else
 				/* *ptr must be ')' */
-			{
-				errsave(escontext,
+				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						 errmsg("malformed record literal: \"%s\"", string),
 						 errdetail("Too few columns.")));
-				goto fail;
-			}
 		}
 
 		/* Check for null: completely empty input means null */
@@ -211,25 +204,19 @@ record_in(PG_FUNCTION_ARGS)
 				char		ch = *ptr++;
 
 				if (ch == '\0')
-				{
-					errsave(escontext,
+					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 							 errmsg("malformed record literal: \"%s\"",
 									string),
 							 errdetail("Unexpected end of input.")));
-					goto fail;
-				}
 				if (ch == '\\')
 				{
 					if (*ptr == '\0')
-					{
-						errsave(escontext,
+						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 								 errmsg("malformed record literal: \"%s\"",
 										string),
 								 errdetail("Unexpected end of input.")));
-						goto fail;
-					}
 					appendStringInfoChar(&buf, *ptr++);
 				}
 				else if (ch == '"')
@@ -265,13 +252,10 @@ record_in(PG_FUNCTION_ARGS)
 			column_info->column_type = column_type;
 		}
 
-		if (!InputFunctionCallSafe(&column_info->proc,
-								   column_data,
-								   column_info->typioparam,
-								   att->atttypmod,
-								   escontext,
-								   &values[i]))
-			goto fail;
+		values[i] = InputFunctionCall(&column_info->proc,
+									  column_data,
+									  column_info->typioparam,
+									  att->atttypmod);
 
 		/*
 		 * Prep for next column
@@ -280,24 +264,18 @@ record_in(PG_FUNCTION_ARGS)
 	}
 
 	if (*ptr++ != ')')
-	{
-		errsave(escontext,
+		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("malformed record literal: \"%s\"", string),
 				 errdetail("Too many columns.")));
-		goto fail;
-	}
 	/* Allow trailing whitespace */
 	while (*ptr && isspace((unsigned char) *ptr))
 		ptr++;
 	if (*ptr)
-	{
-		errsave(escontext,
+		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("malformed record literal: \"%s\"", string),
 				 errdetail("Junk after right parenthesis.")));
-		goto fail;
-	}
 
 	tuple = heap_form_tuple(tupdesc, values, nulls);
 
@@ -316,11 +294,6 @@ record_in(PG_FUNCTION_ARGS)
 	ReleaseTupleDesc(tupdesc);
 
 	PG_RETURN_HEAPTUPLEHEADER(result);
-
-	/* exit here once we've done lookup_rowtype_tupdesc */
-fail:
-	ReleaseTupleDesc(tupdesc);
-	PG_RETURN_NULL();
 }
 
 /*

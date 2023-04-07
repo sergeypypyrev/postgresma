@@ -2,7 +2,7 @@
  *
  * partcache.h
  *
- * Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * src/include/utils/partcache.h
  *
@@ -13,7 +13,6 @@
 
 #include "access/attnum.h"
 #include "fmgr.h"
-#include "nodes/parsenodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/primnodes.h"
 #include "partitioning/partdefs.h"
@@ -24,7 +23,7 @@
  */
 typedef struct PartitionKeyData
 {
-	PartitionStrategy strategy; /* partitioning strategy */
+	char		strategy;		/* partitioning strategy */
 	int16		partnatts;		/* number of columns in the partition key */
 	AttrNumber *partattrs;		/* attribute numbers of columns in the
 								 * partition key or 0 if it's an expr */

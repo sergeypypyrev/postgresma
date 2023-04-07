@@ -5,7 +5,7 @@
  *	  commands.  At one time acted as an interface between the Lisp and C
  *	  systems.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -767,7 +767,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 
 		case T_GrantRoleStmt:
 			/* no event triggers for global objects */
-			GrantRole(pstate, (GrantRoleStmt *) parsetree);
+			GrantRole((GrantRoleStmt *) parsetree);
 			break;
 
 		case T_CreatedbStmt:
@@ -950,10 +950,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			if (!has_privs_of_role(GetUserId(), ROLE_PG_CHECKPOINT))
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-						 errmsg("permission denied to execute %s command",
-								"CHECKPOINT"),
-						 errdetail("Only roles with privileges of the \"%s\" role may execute this command.",
-								   "pg_checkpoint")));
+						 errmsg("must be superuser or have privileges of pg_checkpoint to do CHECKPOINT")));
 
 			RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_WAIT |
 							  (RecoveryInProgress() ? 0 : CHECKPOINT_FORCE));
@@ -1464,7 +1461,6 @@ ProcessUtilitySlow(ParseState *pstate,
 					IndexStmt  *stmt = (IndexStmt *) parsetree;
 					Oid			relid;
 					LOCKMODE	lockmode;
-					int			nparts = -1;
 					bool		is_alter_table;
 
 					if (stmt->concurrent)
@@ -1495,9 +1491,7 @@ ProcessUtilitySlow(ParseState *pstate,
 					 *
 					 * We also take the opportunity to verify that all
 					 * partitions are something we can put an index on, to
-					 * avoid building some indexes only to fail later.  While
-					 * at it, also count the partitions, so that DefineIndex
-					 * needn't do a duplicative find_all_inheritors search.
+					 * avoid building some indexes only to fail later.
 					 */
 					if (stmt->relation->inh &&
 						get_rel_relkind(relid) == RELKIND_PARTITIONED_TABLE)
@@ -1508,8 +1502,7 @@ ProcessUtilitySlow(ParseState *pstate,
 						inheritors = find_all_inheritors(relid, lockmode, NULL);
 						foreach(lc, inheritors)
 						{
-							Oid			partrelid = lfirst_oid(lc);
-							char		relkind = get_rel_relkind(partrelid);
+							char		relkind = get_rel_relkind(lfirst_oid(lc));
 
 							if (relkind != RELKIND_RELATION &&
 								relkind != RELKIND_MATVIEW &&
@@ -1527,8 +1520,6 @@ ProcessUtilitySlow(ParseState *pstate,
 										 errdetail("Table \"%s\" contains partitions that are foreign tables.",
 												   stmt->relation->relname)));
 						}
-						/* count direct and indirect children, but not rel */
-						nparts = list_length(inheritors) - 1;
 						list_free(inheritors);
 					}
 
@@ -1554,7 +1545,6 @@ ProcessUtilitySlow(ParseState *pstate,
 									InvalidOid, /* no predefined OID */
 									InvalidOid, /* no parent index */
 									InvalidOid, /* no parent constraint */
-									nparts, /* # of partitions, or -1 */
 									is_alter_table,
 									true,	/* check_rights */
 									true,	/* check_not_in_use */
@@ -1688,16 +1678,16 @@ ProcessUtilitySlow(ParseState *pstate,
 				 * command itself is queued, which is enough.
 				 */
 				EventTriggerInhibitCommandCollection();
-				PG_TRY(2);
+				PG_TRY();
 				{
 					address = ExecRefreshMatView((RefreshMatViewStmt *) parsetree,
 												 queryString, params, qc);
 				}
-				PG_FINALLY(2);
+				PG_FINALLY();
 				{
 					EventTriggerUndoInhibitCommandCollection();
 				}
-				PG_END_TRY(2);
+				PG_END_TRY();
 				break;
 
 			case T_CreateTrigStmt:

@@ -1,3 +1,6 @@
+AROPT = cr
+
+export_dynamic = -Wl,-export-dynamic
 rpath = -Wl,-R'$(rpathdir)'
 
 # extra stuff for $(with_temp_install)

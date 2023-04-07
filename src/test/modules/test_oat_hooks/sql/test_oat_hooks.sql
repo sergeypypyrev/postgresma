@@ -43,7 +43,6 @@ REVOKE ALL ON PARAMETER "none.such" FROM PUBLIC;
 -- Create objects for use in the test
 CREATE USER regress_test_user;
 CREATE TABLE regress_test_table (t text);
-CREATE INDEX regress_test_table_t_idx ON regress_test_table (t);
 GRANT SELECT ON Table regress_test_table TO public;
 CREATE FUNCTION regress_test_func (t text) RETURNS text AS $$
 	SELECT $1;
@@ -94,11 +93,9 @@ RESET work_mem;
 ALTER SYSTEM SET work_mem = 8192;
 ALTER SYSTEM RESET work_mem;
 
--- try labelled drops
-RESET SESSION AUTHORIZATION;
-DROP INDEX CONCURRENTLY regress_test_table_t_idx;
-
 -- Clean up
+RESET SESSION AUTHORIZATION;
+
 SET test_oat_hooks.audit = false;
 DROP ROLE regress_role_joe;  -- fails
 REVOKE ALL PRIVILEGES ON PARAMETER

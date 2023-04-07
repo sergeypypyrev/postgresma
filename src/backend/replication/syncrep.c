@@ -63,7 +63,7 @@
  * the standbys which are considered as synchronous at that moment
  * will release waiters from the queue.
  *
- * Portions Copyright (c) 2010-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/syncrep.c
@@ -84,7 +84,6 @@
 #include "storage/proc.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
-#include "utils/guc_hooks.h"
 #include "utils/ps_status.h"
 
 /* User-settable parameters for sync rep */
@@ -148,6 +147,8 @@ static bool SyncRepQueueIsOrderedByLSN(int mode);
 void
 SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 {
+	char	   *new_status = NULL;
+	const char *old_status;
 	int			mode;
 
 	/*
@@ -180,7 +181,7 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	else
 		mode = Min(SyncRepWaitMode, SYNC_REP_WAIT_FLUSH);
 
-	Assert(dlist_node_is_detached(&MyProc->syncRepLinks));
+	Assert(SHMQueueIsDetached(&(MyProc->syncRepLinks)));
 	Assert(WalSndCtl != NULL);
 
 	LWLockAcquire(SyncRepLock, LW_EXCLUSIVE);
@@ -214,10 +215,15 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	/* Alter ps display to show waiting for sync rep. */
 	if (update_process_title)
 	{
-		char		buffer[32];
+		int			len;
 
-		sprintf(buffer, "waiting for %X/%X", LSN_FORMAT_ARGS(lsn));
-		set_ps_display_suffix(buffer);
+		old_status = get_ps_display(&len);
+		new_status = (char *) palloc(len + 32 + 1);
+		memcpy(new_status, old_status, len);
+		sprintf(new_status + len, " waiting for %X/%X",
+				LSN_FORMAT_ARGS(lsn));
+		set_ps_display(new_status);
+		new_status[len] = '\0'; /* truncate off " waiting ..." */
 	}
 
 	/*
@@ -311,13 +317,16 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	 * assertions, but better safe than sorry).
 	 */
 	pg_read_barrier();
-	Assert(dlist_node_is_detached(&MyProc->syncRepLinks));
+	Assert(SHMQueueIsDetached(&(MyProc->syncRepLinks)));
 	MyProc->syncRepState = SYNC_REP_NOT_WAITING;
 	MyProc->waitLSN = 0;
 
-	/* reset ps display to remove the suffix */
-	if (update_process_title)
-		set_ps_display_remove_suffix();
+	if (new_status)
+	{
+		/* Reset ps display */
+		set_ps_display(new_status);
+		pfree(new_status);
+	}
 }
 
 /*
@@ -329,32 +338,31 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 static void
 SyncRepQueueInsert(int mode)
 {
-	dlist_head *queue;
-	dlist_iter iter;
+	PGPROC	   *proc;
 
 	Assert(mode >= 0 && mode < NUM_SYNC_REP_WAIT_MODE);
-	queue = &WalSndCtl->SyncRepQueue[mode];
+	proc = (PGPROC *) SHMQueuePrev(&(WalSndCtl->SyncRepQueue[mode]),
+								   &(WalSndCtl->SyncRepQueue[mode]),
+								   offsetof(PGPROC, syncRepLinks));
 
-	dlist_reverse_foreach(iter, queue)
+	while (proc)
 	{
-		PGPROC	   *proc = dlist_container(PGPROC, syncRepLinks, iter.cur);
-
 		/*
-		 * Stop at the queue element that we should insert after to ensure the
-		 * queue is ordered by LSN.
+		 * Stop at the queue element that we should after to ensure the queue
+		 * is ordered by LSN.
 		 */
 		if (proc->waitLSN < MyProc->waitLSN)
-		{
-			dlist_insert_after(&proc->syncRepLinks, &MyProc->syncRepLinks);
-			return;
-		}
+			break;
+
+		proc = (PGPROC *) SHMQueuePrev(&(WalSndCtl->SyncRepQueue[mode]),
+									   &(proc->syncRepLinks),
+									   offsetof(PGPROC, syncRepLinks));
 	}
 
-	/*
-	 * If we get here, the list was either empty, or this process needs to be
-	 * at the head.
-	 */
-	dlist_push_head(queue, &MyProc->syncRepLinks);
+	if (proc)
+		SHMQueueInsertAfter(&(proc->syncRepLinks), &(MyProc->syncRepLinks));
+	else
+		SHMQueueInsertAfter(&(WalSndCtl->SyncRepQueue[mode]), &(MyProc->syncRepLinks));
 }
 
 /*
@@ -364,8 +372,8 @@ static void
 SyncRepCancelWait(void)
 {
 	LWLockAcquire(SyncRepLock, LW_EXCLUSIVE);
-	if (!dlist_node_is_detached(&MyProc->syncRepLinks))
-		dlist_delete_thoroughly(&MyProc->syncRepLinks);
+	if (!SHMQueueIsDetached(&(MyProc->syncRepLinks)))
+		SHMQueueDelete(&(MyProc->syncRepLinks));
 	MyProc->syncRepState = SYNC_REP_NOT_WAITING;
 	LWLockRelease(SyncRepLock);
 }
@@ -377,13 +385,13 @@ SyncRepCleanupAtProcExit(void)
 	 * First check if we are removed from the queue without the lock to not
 	 * slow down backend exit.
 	 */
-	if (!dlist_node_is_detached(&MyProc->syncRepLinks))
+	if (!SHMQueueIsDetached(&(MyProc->syncRepLinks)))
 	{
 		LWLockAcquire(SyncRepLock, LW_EXCLUSIVE);
 
 		/* maybe we have just been removed, so recheck */
-		if (!dlist_node_is_detached(&MyProc->syncRepLinks))
-			dlist_delete_thoroughly(&MyProc->syncRepLinks);
+		if (!SHMQueueIsDetached(&(MyProc->syncRepLinks)))
+			SHMQueueDelete(&(MyProc->syncRepLinks));
 
 		LWLockRelease(SyncRepLock);
 	}
@@ -870,17 +878,20 @@ static int
 SyncRepWakeQueue(bool all, int mode)
 {
 	volatile WalSndCtlData *walsndctl = WalSndCtl;
+	PGPROC	   *proc = NULL;
+	PGPROC	   *thisproc = NULL;
 	int			numprocs = 0;
-	dlist_mutable_iter iter;
 
 	Assert(mode >= 0 && mode < NUM_SYNC_REP_WAIT_MODE);
 	Assert(LWLockHeldByMeInMode(SyncRepLock, LW_EXCLUSIVE));
 	Assert(SyncRepQueueIsOrderedByLSN(mode));
 
-	dlist_foreach_modify(iter, &WalSndCtl->SyncRepQueue[mode])
-	{
-		PGPROC *proc = dlist_container(PGPROC, syncRepLinks, iter.cur);
+	proc = (PGPROC *) SHMQueueNext(&(WalSndCtl->SyncRepQueue[mode]),
+								   &(WalSndCtl->SyncRepQueue[mode]),
+								   offsetof(PGPROC, syncRepLinks));
 
+	while (proc)
+	{
 		/*
 		 * Assume the queue is ordered by LSN
 		 */
@@ -888,9 +899,18 @@ SyncRepWakeQueue(bool all, int mode)
 			return numprocs;
 
 		/*
-		 * Remove from queue.
+		 * Move to next proc, so we can delete thisproc from the queue.
+		 * thisproc is valid, proc may be NULL after this.
 		 */
-		dlist_delete_thoroughly(&proc->syncRepLinks);
+		thisproc = proc;
+		proc = (PGPROC *) SHMQueueNext(&(WalSndCtl->SyncRepQueue[mode]),
+									   &(proc->syncRepLinks),
+									   offsetof(PGPROC, syncRepLinks));
+
+		/*
+		 * Remove thisproc from queue.
+		 */
+		SHMQueueDelete(&(thisproc->syncRepLinks));
 
 		/*
 		 * SyncRepWaitForLSN() reads syncRepState without holding the lock, so
@@ -903,12 +923,12 @@ SyncRepWakeQueue(bool all, int mode)
 		 * Set state to complete; see SyncRepWaitForLSN() for discussion of
 		 * the various states.
 		 */
-		proc->syncRepState = SYNC_REP_WAIT_COMPLETE;
+		thisproc->syncRepState = SYNC_REP_WAIT_COMPLETE;
 
 		/*
 		 * Wake only when we have set state and removed from queue.
 		 */
-		SetLatch(&(proc->procLatch));
+		SetLatch(&(thisproc->procLatch));
 
 		numprocs++;
 	}
@@ -962,17 +982,19 @@ SyncRepUpdateSyncStandbysDefined(void)
 static bool
 SyncRepQueueIsOrderedByLSN(int mode)
 {
+	PGPROC	   *proc = NULL;
 	XLogRecPtr	lastLSN;
-	dlist_iter	iter;
 
 	Assert(mode >= 0 && mode < NUM_SYNC_REP_WAIT_MODE);
 
 	lastLSN = 0;
 
-	dlist_foreach(iter, &WalSndCtl->SyncRepQueue[mode])
-	{
-		PGPROC	   *proc = dlist_container(PGPROC, syncRepLinks, iter.cur);
+	proc = (PGPROC *) SHMQueueNext(&(WalSndCtl->SyncRepQueue[mode]),
+								   &(WalSndCtl->SyncRepQueue[mode]),
+								   offsetof(PGPROC, syncRepLinks));
 
+	while (proc)
+	{
 		/*
 		 * Check the queue is ordered by LSN and that multiple procs don't
 		 * have matching LSNs
@@ -981,6 +1003,10 @@ SyncRepQueueIsOrderedByLSN(int mode)
 			return false;
 
 		lastLSN = proc->waitLSN;
+
+		proc = (PGPROC *) SHMQueueNext(&(WalSndCtl->SyncRepQueue[mode]),
+									   &(proc->syncRepLinks),
+									   offsetof(PGPROC, syncRepLinks));
 	}
 
 	return true;
@@ -1027,9 +1053,9 @@ check_synchronous_standby_names(char **newval, void **extra, GucSource source)
 			return false;
 		}
 
-		/* GUC extra value must be guc_malloc'd, not palloc'd */
+		/* GUC extra value must be malloc'd, not palloc'd */
 		pconf = (SyncRepConfigData *)
-			guc_malloc(LOG, syncrep_parse_result->config_size);
+			malloc(syncrep_parse_result->config_size);
 		if (pconf == NULL)
 			return false;
 		memcpy(pconf, syncrep_parse_result, syncrep_parse_result->config_size);

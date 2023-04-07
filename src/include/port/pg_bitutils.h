@@ -4,7 +4,7 @@
  *	  Miscellaneous functions for bit-wise operations.
  *
  *
- * Copyright (c) 2019-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2019-2022, PostgreSQL Global Development Group
  *
  * src/include/port/pg_bitutils.h
  *
@@ -12,21 +12,6 @@
  */
 #ifndef PG_BITUTILS_H
 #define PG_BITUTILS_H
-
-#ifdef _MSC_VER
-#include <intrin.h>
-#define HAVE_BITSCAN_FORWARD
-#define HAVE_BITSCAN_REVERSE
-
-#else
-#if defined(HAVE__BUILTIN_CTZ)
-#define HAVE_BITSCAN_FORWARD
-#endif
-
-#if defined(HAVE__BUILTIN_CLZ)
-#define HAVE_BITSCAN_REVERSE
-#endif
-#endif							/* _MSC_VER */
 
 extern PGDLLIMPORT const uint8 pg_leftmost_one_pos[256];
 extern PGDLLIMPORT const uint8 pg_rightmost_one_pos[256];
@@ -44,13 +29,6 @@ pg_leftmost_one_pos32(uint32 word)
 	Assert(word != 0);
 
 	return 31 - __builtin_clz(word);
-#elif defined(_MSC_VER)
-	unsigned long result;
-	bool		non_zero;
-
-	non_zero = _BitScanReverse(&result, word);
-	Assert(non_zero);
-	return (int) result;
 #else
 	int			shift = 32 - 8;
 
@@ -79,16 +57,8 @@ pg_leftmost_one_pos64(uint64 word)
 	return 63 - __builtin_clzll(word);
 #else
 #error must have a working 64-bit integer datatype
-#endif							/* HAVE_LONG_INT_64 */
-
-#elif defined(_MSC_VER)
-	unsigned long result;
-	bool		non_zero;
-
-	non_zero = _BitScanReverse64(&result, word);
-	Assert(non_zero);
-	return (int) result;
-#else
+#endif
+#else							/* !HAVE__BUILTIN_CLZ */
 	int			shift = 64 - 8;
 
 	Assert(word != 0);
@@ -112,13 +82,6 @@ pg_rightmost_one_pos32(uint32 word)
 	Assert(word != 0);
 
 	return __builtin_ctz(word);
-#elif defined(_MSC_VER)
-	unsigned long result;
-	bool		non_zero;
-
-	non_zero = _BitScanForward(&result, word);
-	Assert(non_zero);
-	return (int) result;
 #else
 	int			result = 0;
 
@@ -150,16 +113,8 @@ pg_rightmost_one_pos64(uint64 word)
 	return __builtin_ctzll(word);
 #else
 #error must have a working 64-bit integer datatype
-#endif							/* HAVE_LONG_INT_64 */
-
-#elif defined(_MSC_VER)
-	unsigned long result;
-	bool		non_zero;
-
-	non_zero = _BitScanForward64(&result, word);
-	Assert(non_zero);
-	return (int) result;
-#else
+#endif
+#else							/* !HAVE__BUILTIN_CTZ */
 	int			result = 0;
 
 	Assert(word != 0);
@@ -221,6 +176,16 @@ pg_nextpower2_64(uint64 num)
 }
 
 /*
+ * pg_nextpower2_size_t
+ *		Returns the next higher power of 2 above 'num', for a size_t input.
+ */
+#if SIZEOF_SIZE_T == 4
+#define pg_nextpower2_size_t(num) pg_nextpower2_32(num)
+#else
+#define pg_nextpower2_size_t(num) pg_nextpower2_64(num)
+#endif
+
+/*
  * pg_prevpower2_32
  *		Returns the next lower power of 2 below 'num', or 'num' if it's
  *		already a power of 2.
@@ -245,6 +210,16 @@ pg_prevpower2_64(uint64 num)
 {
 	return ((uint64) 1) << pg_leftmost_one_pos64(num);
 }
+
+/*
+ * pg_prevpower2_size_t
+ *		Returns the next lower power of 2 below 'num', for a size_t input.
+ */
+#if SIZEOF_SIZE_T == 4
+#define pg_prevpower2_size_t(num) pg_prevpower2_32(num)
+#else
+#define pg_prevpower2_size_t(num) pg_prevpower2_64(num)
+#endif
 
 /*
  * pg_ceil_log2_32
@@ -323,17 +298,5 @@ pg_rotate_left32(uint32 word, int n)
 {
 	return (word << n) | (word >> (32 - n));
 }
-
-/* size_t variants of the above, as required */
-
-#if SIZEOF_SIZE_T == 4
-#define pg_leftmost_one_pos_size_t pg_leftmost_one_pos32
-#define pg_nextpower2_size_t pg_nextpower2_32
-#define pg_prevpower2_size_t pg_prevpower2_32
-#else
-#define pg_leftmost_one_pos_size_t pg_leftmost_one_pos64
-#define pg_nextpower2_size_t pg_nextpower2_64
-#define pg_prevpower2_size_t pg_prevpower2_64
-#endif
 
 #endif							/* PG_BITUTILS_H */

@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2023, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 #
 # Tests related to WAL archiving and recovery.
@@ -247,19 +247,5 @@ $standby2->stop;
 my $logfile = slurp_file($standby2->logfile, $log_location);
 ok( $logfile =~ qr/archiver process shutting down/,
 	'check shutdown callback of shell archive module');
-
-# Test that we can enter and leave backup mode without crashes
-my ($stderr, $cmdret);
-$cmdret = $primary->psql(
-	'postgres',
-	"SELECT pg_backup_start('onebackup'); "
-	  . "SELECT pg_backup_stop();"
-	  . "SELECT pg_backup_start(repeat('x', 1026))",
-	stderr => \$stderr);
-is($cmdret, 3, "psql fails correctly");
-like($stderr, qr/backup label too long/, "pg_backup_start fails gracefully");
-$primary->safe_psql('postgres',
-	"SELECT pg_backup_start('onebackup'); SELECT pg_backup_stop();");
-$primary->safe_psql('postgres', "SELECT pg_backup_start('twobackup')");
 
 done_testing();

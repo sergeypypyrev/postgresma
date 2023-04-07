@@ -21,7 +21,7 @@
  *	for a particular range index.  Offsets are counted starting from the end of
  *	flags aligned to the bound type.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -120,7 +120,6 @@ multirange_in(PG_FUNCTION_ARGS)
 	char	   *input_str = PG_GETARG_CSTRING(0);
 	Oid			mltrngtypoid = PG_GETARG_OID(1);
 	Oid			typmod = PG_GETARG_INT32(2);
-	Node	   *escontext = fcinfo->context;
 	TypeCacheEntry *rangetyp;
 	int32		ranges_seen = 0;
 	int32		range_count = 0;
@@ -134,7 +133,6 @@ multirange_in(PG_FUNCTION_ARGS)
 	const char *range_str_begin = NULL;
 	int32		range_str_len;
 	char	   *range_str;
-	Datum		range_datum;
 
 	cache = get_multirange_io_data(fcinfo, mltrngtypoid, IOFunc_input);
 	rangetyp = cache->typcache->rngtype;
@@ -146,7 +144,7 @@ multirange_in(PG_FUNCTION_ARGS)
 	if (*ptr == '{')
 		ptr++;
 	else
-		ereturn(escontext, (Datum) 0,
+		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("malformed multirange literal: \"%s\"",
 						input_str),
@@ -159,7 +157,7 @@ multirange_in(PG_FUNCTION_ARGS)
 		char		ch = *ptr;
 
 		if (ch == '\0')
-			ereturn(escontext, (Datum) 0,
+			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					 errmsg("malformed multirange literal: \"%s\"",
 							input_str),
@@ -188,7 +186,7 @@ multirange_in(PG_FUNCTION_ARGS)
 					parse_state = MULTIRANGE_AFTER_RANGE;
 				}
 				else
-					ereturn(escontext, (Datum) 0,
+					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 							 errmsg("malformed multirange literal: \"%s\"",
 									input_str),
@@ -206,14 +204,10 @@ multirange_in(PG_FUNCTION_ARGS)
 							repalloc(ranges, range_capacity * sizeof(RangeType *));
 					}
 					ranges_seen++;
-					if (!InputFunctionCallSafe(&cache->typioproc,
-											   range_str,
-											   cache->typioparam,
-											   typmod,
-											   escontext,
-											   &range_datum))
-						PG_RETURN_NULL();
-					range = DatumGetRangeTypeP(range_datum);
+					range = DatumGetRangeTypeP(InputFunctionCall(&cache->typioproc,
+																 range_str,
+																 cache->typioparam,
+																 typmod));
 					if (!RangeIsEmpty(range))
 						ranges[range_count++] = range;
 					parse_state = MULTIRANGE_AFTER_RANGE;
@@ -262,7 +256,7 @@ multirange_in(PG_FUNCTION_ARGS)
 				else if (ch == '}')
 					parse_state = MULTIRANGE_FINISHED;
 				else
-					ereturn(escontext, (Datum) 0,
+					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 							 errmsg("malformed multirange literal: \"%s\"",
 									input_str),
@@ -286,7 +280,7 @@ multirange_in(PG_FUNCTION_ARGS)
 		ptr++;
 
 	if (*ptr != '\0')
-		ereturn(escontext, (Datum) 0,
+		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("malformed multirange literal: \"%s\"",
 						input_str),
@@ -813,7 +807,7 @@ multirange_get_union_range(TypeCacheEntry *rangetyp,
 	multirange_get_bounds(rangetyp, mr, 0, &lower, &tmp);
 	multirange_get_bounds(rangetyp, mr, mr->rangeCount - 1, &tmp, &upper);
 
-	return make_range(rangetyp, &lower, &upper, false, NULL);
+	return make_range(rangetyp, &lower, &upper, false);
 }
 
 
@@ -1497,7 +1491,7 @@ multirange_intersect_agg_transfn(PG_FUNCTION_ARGS)
 										   ranges1,
 										   range_count2,
 										   ranges2);
-	PG_RETURN_MULTIRANGE_P(result);
+	PG_RETURN_RANGE_P(result);
 }
 
 
@@ -2702,8 +2696,7 @@ range_merge_from_multirange(PG_FUNCTION_ARGS)
 		multirange_get_bounds(typcache->rngtype, mr, mr->rangeCount - 1,
 							  &lastLower, &lastUpper);
 
-		result = make_range(typcache->rngtype, &firstLower, &lastUpper,
-							false, NULL);
+		result = make_range(typcache->rngtype, &firstLower, &lastUpper, false);
 	}
 
 	PG_RETURN_RANGE_P(result);

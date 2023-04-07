@@ -4,7 +4,7 @@
  *	  Routines to determine which indexes are usable for scanning a
  *	  given relation, and create Paths accordingly.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -99,6 +99,7 @@ static void get_join_index_paths(PlannerInfo *root, RelOptInfo *rel,
 								 List **considered_relids);
 static bool eclass_already_used(EquivalenceClass *parent_ec, Relids oldrelids,
 								List *indexjoinclauses);
+static bool bms_equal_any(Relids relids, List *relids_list);
 static void get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 							IndexOptInfo *index, IndexClauseSet *clauses,
 							List **bitindexpaths);
@@ -152,7 +153,6 @@ static IndexClause *match_clause_to_indexcol(PlannerInfo *root,
 											 RestrictInfo *rinfo,
 											 int indexcol,
 											 IndexOptInfo *index);
-static bool IsBooleanOpfamily(Oid opfamily);
 static IndexClause *match_boolean_index_clause(PlannerInfo *root,
 											   RestrictInfo *rinfo,
 											   int indexcol, IndexOptInfo *index);
@@ -361,6 +361,7 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 	if (bitjoinpaths != NIL)
 	{
 		List	   *all_path_outers;
+		ListCell   *lc;
 
 		/* Identify each distinct parameterization seen in bitjoinpaths */
 		all_path_outers = NIL;
@@ -369,8 +370,8 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 			Path	   *path = (Path *) lfirst(lc);
 			Relids		required_outer = PATH_REQ_OUTER(path);
 
-			all_path_outers = list_append_unique(all_path_outers,
-												 required_outer);
+			if (!bms_equal_any(required_outer, all_path_outers))
+				all_path_outers = lappend(all_path_outers, required_outer);
 		}
 
 		/* Now, for each distinct parameterization set ... */
@@ -516,7 +517,7 @@ consider_index_join_outer_rels(PlannerInfo *root, RelOptInfo *rel,
 		int			num_considered_relids;
 
 		/* If we already tried its relids set, no need to do so again */
-		if (list_member(*considered_relids, clause_relids))
+		if (bms_equal_any(clause_relids, *considered_relids))
 			continue;
 
 		/*
@@ -611,7 +612,7 @@ get_join_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	int			indexcol;
 
 	/* If we already considered this relids set, don't repeat the work */
-	if (list_member(*considered_relids, relids))
+	if (bms_equal_any(relids, *considered_relids))
 		return;
 
 	/* Identify indexclauses usable with this relids set */
@@ -688,6 +689,25 @@ eclass_already_used(EquivalenceClass *parent_ec, Relids oldrelids,
 
 		if (rinfo->parent_ec == parent_ec &&
 			bms_is_subset(rinfo->clause_relids, oldrelids))
+			return true;
+	}
+	return false;
+}
+
+/*
+ * bms_equal_any
+ *		True if relids is bms_equal to any member of relids_list
+ *
+ * Perhaps this should be in bitmapset.c someday.
+ */
+static bool
+bms_equal_any(Relids relids, List *relids_list)
+{
+	ListCell   *lc;
+
+	foreach(lc, relids_list)
+	{
+		if (bms_equal(relids, (Relids) lfirst(lc)))
 			return true;
 	}
 	return false;
@@ -949,6 +969,9 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	/* We do not want the index's rel itself listed in outer_relids */
 	outer_relids = bms_del_member(outer_relids, rel->relid);
+	/* Enforce convention that outer_relids is exactly NULL if empty */
+	if (bms_is_empty(outer_relids))
+		outer_relids = NULL;
 
 	/* Compute loop_count for cost estimation purposes */
 	loop_count = get_loop_count(root, rel->relid, outer_relids);
@@ -1012,7 +1035,9 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 								  orderbyclauses,
 								  orderbyclausecols,
 								  useful_pathkeys,
-								  ForwardScanDirection,
+								  index_is_ordered ?
+								  ForwardScanDirection :
+								  NoMovementScanDirection,
 								  index_only_scan,
 								  outer_relids,
 								  loop_count,
@@ -1032,7 +1057,9 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 									  orderbyclauses,
 									  orderbyclausecols,
 									  useful_pathkeys,
-									  ForwardScanDirection,
+									  index_is_ordered ?
+									  ForwardScanDirection :
+									  NoMovementScanDirection,
 									  index_only_scan,
 									  outer_relids,
 									  loop_count,
@@ -1276,11 +1303,11 @@ generate_bitmap_or_paths(PlannerInfo *root, RelOptInfo *rel,
 			}
 			else
 			{
-				RestrictInfo *ri = castNode(RestrictInfo, orarg);
+				RestrictInfo *rinfo = castNode(RestrictInfo, orarg);
 				List	   *orargs;
 
-				Assert(!restriction_is_or_clause(ri));
-				orargs = list_make1(ri);
+				Assert(!restriction_is_or_clause(rinfo));
+				orargs = list_make1(rinfo);
 
 				indlist = build_paths_for_OR(root, rel,
 											 orargs,
@@ -2161,7 +2188,7 @@ match_clause_to_index(PlannerInfo *root,
 		/* Ignore duplicates */
 		foreach(lc, clauseset->indexclauses[indexcol])
 		{
-			iclause = (IndexClause *) lfirst(lc);
+			IndexClause *iclause = (IndexClause *) lfirst(lc);
 
 			if (iclause->rinfo == rinfo)
 				return;
@@ -2314,23 +2341,6 @@ match_clause_to_indexcol(PlannerInfo *root,
 	}
 
 	return NULL;
-}
-
-/*
- * IsBooleanOpfamily
- *	  Detect whether an opfamily supports boolean equality as an operator.
- *
- * If the opfamily OID is in the range of built-in objects, we can rely
- * on hard-wired knowledge of which built-in opfamilies support this.
- * For extension opfamilies, there's no choice but to do a catcache lookup.
- */
-static bool
-IsBooleanOpfamily(Oid opfamily)
-{
-	if (opfamily < FirstNormalObjectId)
-		return IsBuiltinBooleanOpfamily(opfamily);
-	else
-		return op_in_opfamily(BooleanEqualOperator, opfamily);
 }
 
 /*
@@ -3016,12 +3026,14 @@ expand_indexqual_rowcompare(PlannerInfo *root,
 
 			rc->rctype = (RowCompareType) op_strategy;
 			rc->opnos = new_ops;
-			rc->opfamilies = list_copy_head(clause->opfamilies,
-											matching_cols);
-			rc->inputcollids = list_copy_head(clause->inputcollids,
-											  matching_cols);
-			rc->largs = list_copy_head(var_args, matching_cols);
-			rc->rargs = list_copy_head(non_var_args, matching_cols);
+			rc->opfamilies = list_truncate(list_copy(clause->opfamilies),
+										   matching_cols);
+			rc->inputcollids = list_truncate(list_copy(clause->inputcollids),
+											 matching_cols);
+			rc->largs = list_truncate(copyObject(var_args),
+									  matching_cols);
+			rc->rargs = list_truncate(copyObject(non_var_args),
+									  matching_cols);
 			iclause->indexquals = list_make1(make_simple_restrictinfo(root,
 																	  (Expr *) rc));
 		}
@@ -3345,16 +3357,13 @@ check_index_predicates(PlannerInfo *root, RelOptInfo *rel)
 	 * Add on any equivalence-derivable join clauses.  Computing the correct
 	 * relid sets for generate_join_implied_equalities is slightly tricky
 	 * because the rel could be a child rel rather than a true baserel, and in
-	 * that case we must subtract its parents' relid(s) from all_query_rels.
-	 * Additionally, we mustn't consider clauses that are only computable
-	 * after outer joins that can null the rel.
+	 * that case we must remove its parents' relid(s) from all_baserels.
 	 */
 	if (rel->reloptkind == RELOPT_OTHER_MEMBER_REL)
-		otherrels = bms_difference(root->all_query_rels,
+		otherrels = bms_difference(root->all_baserels,
 								   find_childrel_parents(root, rel));
 	else
-		otherrels = bms_difference(root->all_query_rels, rel->relids);
-	otherrels = bms_del_members(otherrels, rel->nulling_relids);
+		otherrels = bms_difference(root->all_baserels, rel->relids);
 
 	if (!bms_is_empty(otherrels))
 		clauselist =
@@ -3363,8 +3372,7 @@ check_index_predicates(PlannerInfo *root, RelOptInfo *rel)
 														 bms_union(rel->relids,
 																   otherrels),
 														 otherrels,
-														 rel,
-														 0));
+														 rel));
 
 	/*
 	 * Normally we remove quals that are implied by a partial index's
@@ -3733,8 +3741,7 @@ match_index_to_operand(Node *operand,
 		 */
 		if (operand && IsA(operand, Var) &&
 			index->rel->relid == ((Var *) operand)->varno &&
-			indkey == ((Var *) operand)->varattno &&
-			((Var *) operand)->varnullingrels == NULL)
+			indkey == ((Var *) operand)->varattno)
 			return true;
 	}
 	else

@@ -742,9 +742,9 @@ AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
 	else
 	{
 		if (fillzeros)
-			sprintf(cp, "%02d.%0*d", abs(sec), precision, abs(fsec));
+			sprintf(cp, "%02d.%0*d", abs(sec), precision, (int) Abs(fsec));
 		else
-			sprintf(cp, "%d.%0*d", abs(sec), precision, abs(fsec));
+			sprintf(cp, "%d.%0*d", abs(sec), precision, (int) Abs(fsec));
 		TrimTrailingZeros(cp);
 	}
 }

@@ -3,7 +3,7 @@
  * parse_type.c
  *		handle type operations for parser
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -411,7 +411,9 @@ typenameTypeMod(ParseState *pstate, const TypeName *typeName, Type typ)
 		datums[n++] = CStringGetDatum(cstr);
 	}
 
-	arrtypmod = construct_array_builtin(datums, n, CSTRINGOID);
+	/* hardwired knowledge about cstring's representation details here */
+	arrtypmod = construct_array(datums, n, CSTRINGOID,
+								-2, false, TYPALIGN_CHAR);
 
 	/* arrange to report location if type's typmodin function fails */
 	setup_parser_errposition_callback(&pcbstate, pstate, typeName->location);
@@ -727,15 +729,10 @@ pts_error_callback(void *arg)
  * Given a string that is supposed to be a SQL-compatible type declaration,
  * such as "int4" or "integer" or "character varying(32)", parse
  * the string and return the result as a TypeName.
- *
- * If the string cannot be parsed as a type, an error is raised,
- * unless escontext is an ErrorSaveContext node, in which case we may
- * fill that and return NULL.  But note that the ErrorSaveContext option
- * is mostly aspirational at present: errors detected by the main
- * grammar, rather than here, will still be thrown.
+ * If the string cannot be parsed as a type, an error is raised.
  */
 TypeName *
-typeStringToTypeName(const char *str, Node *escontext)
+typeStringToTypeName(const char *str)
 {
 	List	   *raw_parsetree_list;
 	TypeName   *typeName;
@@ -768,54 +765,49 @@ typeStringToTypeName(const char *str, Node *escontext)
 	return typeName;
 
 fail:
-	ereturn(escontext, NULL,
+	ereport(ERROR,
 			(errcode(ERRCODE_SYNTAX_ERROR),
 			 errmsg("invalid type name \"%s\"", str)));
+	return NULL;				/* keep compiler quiet */
 }
 
 /*
  * Given a string that is supposed to be a SQL-compatible type declaration,
  * such as "int4" or "integer" or "character varying(32)", parse
  * the string and convert it to a type OID and type modifier.
- *
- * If escontext is an ErrorSaveContext node, then errors are reported by
- * filling escontext and returning false, instead of throwing them.
+ * If missing_ok is true, InvalidOid is returned rather than raising an error
+ * when the type name is not found.
  */
-bool
-parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p,
-				Node *escontext)
+void
+parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p, bool missing_ok)
 {
 	TypeName   *typeName;
 	Type		tup;
 
-	typeName = typeStringToTypeName(str, escontext);
-	if (typeName == NULL)
-		return false;
+	typeName = typeStringToTypeName(str);
 
-	tup = LookupTypeName(NULL, typeName, typmod_p,
-						 (escontext && IsA(escontext, ErrorSaveContext)));
+	tup = LookupTypeName(NULL, typeName, typmod_p, missing_ok);
 	if (tup == NULL)
 	{
-		ereturn(escontext, false,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("type \"%s\" does not exist",
-						TypeNameToString(typeName))));
+		if (!missing_ok)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("type \"%s\" does not exist",
+							TypeNameToString(typeName)),
+					 parser_errposition(NULL, typeName->location)));
+		*typeid_p = InvalidOid;
 	}
 	else
 	{
 		Form_pg_type typ = (Form_pg_type) GETSTRUCT(tup);
 
 		if (!typ->typisdefined)
-		{
-			ReleaseSysCache(tup);
-			ereturn(escontext, false,
+			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("type \"%s\" is only a shell",
-							TypeNameToString(typeName))));
-		}
+							TypeNameToString(typeName)),
+					 parser_errposition(NULL, typeName->location)));
 		*typeid_p = typ->oid;
 		ReleaseSysCache(tup);
 	}
-
-	return true;
 }

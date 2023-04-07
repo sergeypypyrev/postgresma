@@ -7,10 +7,8 @@
 
 #include "catalog/pg_type.h"
 #include "lib/qunique.h"
-#include "miscadmin.h"
 #include "trgm.h"
 #include "tsearch/ts_locale.h"
-#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/pg_crc.h"
@@ -21,6 +19,8 @@ PG_MODULE_MAGIC;
 double		similarity_threshold = 0.3f;
 double		word_similarity_threshold = 0.6f;
 double		strict_word_similarity_threshold = 0.5f;
+
+void		_PG_init(void);
 
 PG_FUNCTION_INFO_V1(set_limit);
 PG_FUNCTION_INFO_V1(show_limit);
@@ -68,7 +68,7 @@ _PG_init(void)
 							 "Sets the threshold used by the % operator.",
 							 "Valid range is 0.0 .. 1.0.",
 							 &similarity_threshold,
-							 0.3f,
+							 0.3,
 							 0.0,
 							 1.0,
 							 PGC_USERSET,
@@ -80,7 +80,7 @@ _PG_init(void)
 							 "Sets the threshold used by the <% operator.",
 							 "Valid range is 0.0 .. 1.0.",
 							 &word_similarity_threshold,
-							 0.6f,
+							 0.6,
 							 0.0,
 							 1.0,
 							 PGC_USERSET,
@@ -92,7 +92,7 @@ _PG_init(void)
 							 "Sets the threshold used by the <<% operator.",
 							 "Valid range is 0.0 .. 1.0.",
 							 &strict_word_similarity_threshold,
-							 0.5f,
+							 0.5,
 							 0.0,
 							 1.0,
 							 PGC_USERSET,
@@ -376,7 +376,7 @@ generate_trgm(char *str, int slen)
 	 */
 	if (len > 1)
 	{
-		qsort(GETARR(trg), len, sizeof(trgm), comp_trgm);
+		qsort((void *) GETARR(trg), len, sizeof(trgm), comp_trgm);
 		len = qunique(GETARR(trg), len, sizeof(trgm), comp_trgm);
 	}
 
@@ -443,15 +443,14 @@ comp_ptrgm(const void *v1, const void *v2)
 
 /*
  * Iterative search function which calculates maximum similarity with word in
- * the string. Maximum similarity is only calculated only if the flag
- * WORD_SIMILARITY_CHECK_ONLY isn't set.
+ * the string. But maximum similarity is calculated only if check_only == false.
  *
  * trg2indexes: array which stores indexes of the array "found".
  * found: array which stores true of false values.
  * ulen1: count of unique trigrams of array "trg1".
  * len2: length of array "trg2" and array "trg2indexes".
  * len: length of the array "found".
- * flags: set of boolean flags parameterizing similarity calculation.
+ * lags: set of boolean flags parameterizing similarity calculation.
  * bounds: whether each trigram is left/right bound of word.
  *
  * Returns word similarity.
@@ -495,12 +494,8 @@ iterate_word_similarity(int *trg2indexes,
 
 	for (i = 0; i < len2; i++)
 	{
-		int			trgindex;
-
-		CHECK_FOR_INTERRUPTS();
-
 		/* Get index of next trigram */
-		trgindex = trg2indexes[i];
+		int			trgindex = trg2indexes[i];
 
 		/* Update last position of this trigram */
 		if (lower >= 0 || found[trgindex])
@@ -929,7 +924,7 @@ generate_wildcard_trgm(const char *str, int slen)
 	 */
 	if (len > 1)
 	{
-		qsort(GETARR(trg), len, sizeof(trgm), comp_trgm);
+		qsort((void *) GETARR(trg), len, sizeof(trgm), comp_trgm);
 		len = qunique(GETARR(trg), len, sizeof(trgm), comp_trgm);
 	}
 
@@ -982,7 +977,12 @@ show_trgm(PG_FUNCTION_ARGS)
 		d[i] = PointerGetDatum(item);
 	}
 
-	a = construct_array_builtin(d, ARRNELEM(trg), TEXTOID);
+	a = construct_array(d,
+						ARRNELEM(trg),
+						TEXTOID,
+						-1,
+						false,
+						TYPALIGN_INT);
 
 	for (i = 0; i < ARRNELEM(trg); i++)
 		pfree(DatumGetPointer(d[i]));

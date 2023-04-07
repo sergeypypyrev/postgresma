@@ -4,7 +4,7 @@
  *
  * Entrypoints of the hooks in PostgreSQL, and dispatches the callbacks.
  *
- * Copyright (c) 2010-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * -------------------------------------------------------------------------
  */
@@ -30,6 +30,7 @@ PG_MODULE_MAGIC;
 /*
  * Declarations
  */
+void		_PG_init(void);
 
 /*
  * Saved hook entries (if stacked)
@@ -57,7 +58,7 @@ static sepgsql_context_info_t sepgsql_context_info;
 /*
  * GUC: sepgsql.permissive = (on|off)
  */
-static bool sepgsql_permissive = false;
+static bool sepgsql_permissive;
 
 bool
 sepgsql_get_permissive(void)
@@ -68,7 +69,7 @@ sepgsql_get_permissive(void)
 /*
  * GUC: sepgsql.debug_audit = (on|off)
  */
-static bool sepgsql_debug_audit = false;
+static bool sepgsql_debug_audit;
 
 bool
 sepgsql_get_debug_audit(void)
@@ -287,17 +288,17 @@ sepgsql_object_access(ObjectAccessType access,
  * Entrypoint of DML permissions
  */
 static bool
-sepgsql_exec_check_perms(List *rangeTbls, List *rteperminfos, bool abort)
+sepgsql_exec_check_perms(List *rangeTabls, bool abort)
 {
 	/*
 	 * If security provider is stacking and one of them replied 'false' at
 	 * least, we don't need to check any more.
 	 */
 	if (next_exec_check_perms_hook &&
-		!(*next_exec_check_perms_hook) (rangeTbls, rteperminfos, abort))
+		!(*next_exec_check_perms_hook) (rangeTabls, abort))
 		return false;
 
-	if (!sepgsql_dml_privileges(rangeTbls, rteperminfos, abort))
+	if (!sepgsql_dml_privileges(rangeTabls, abort))
 		return false;
 
 	return true;

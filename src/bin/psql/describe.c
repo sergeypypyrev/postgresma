@@ -7,7 +7,7 @@
  * information for an old server, but not to fail outright.  (But failing
  * against a pre-9.2 server is allowed.)
  *
- * Copyright (c) 2000-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2022, PostgreSQL Global Development Group
  *
  * src/bin/psql/describe.c
  */
@@ -410,9 +410,14 @@ describeFunctions(const char *functypes, const char *func_pattern,
 		appendPQExpBuffer(&buf,
 						  ",\n l.lanname as \"%s\"",
 						  gettext_noop("Language"));
-		appendPQExpBuffer(&buf,
-						  ",\n CASE WHEN l.lanname IN ('internal', 'c') THEN p.prosrc END as \"%s\"",
-						  gettext_noop("Internal name"));
+		if (pset.sversion >= 140000)
+			appendPQExpBuffer(&buf,
+							  ",\n COALESCE(pg_catalog.pg_get_function_sqlbody(p.oid), p.prosrc) as \"%s\"",
+							  gettext_noop("Source code"));
+		else
+			appendPQExpBuffer(&buf,
+							  ",\n p.prosrc as \"%s\"",
+							  gettext_noop("Source code"));
 		appendPQExpBuffer(&buf,
 						  ",\n pg_catalog.obj_description(p.oid, 'pg_proc') as \"%s\"",
 						  gettext_noop("Description"));
@@ -923,52 +928,38 @@ listAllDbs(const char *pattern, bool verbose)
 	initPQExpBuffer(&buf);
 
 	printfPQExpBuffer(&buf,
-					  "SELECT\n"
-					  "  d.datname as \"%s\",\n"
-					  "  pg_catalog.pg_get_userbyid(d.datdba) as \"%s\",\n"
-					  "  pg_catalog.pg_encoding_to_char(d.encoding) as \"%s\",\n",
+					  "SELECT d.datname as \"%s\",\n"
+					  "       pg_catalog.pg_get_userbyid(d.datdba) as \"%s\",\n"
+					  "       pg_catalog.pg_encoding_to_char(d.encoding) as \"%s\",\n"
+					  "       d.datcollate as \"%s\",\n"
+					  "       d.datctype as \"%s\",\n",
 					  gettext_noop("Name"),
 					  gettext_noop("Owner"),
-					  gettext_noop("Encoding"));
-	if (pset.sversion >= 150000)
-		appendPQExpBuffer(&buf,
-						  "  CASE d.datlocprovider WHEN 'c' THEN 'libc' WHEN 'i' THEN 'icu' END AS \"%s\",\n",
-						  gettext_noop("Locale Provider"));
-	else
-		appendPQExpBuffer(&buf,
-						  "  'libc' AS \"%s\",\n",
-						  gettext_noop("Locale Provider"));
-	appendPQExpBuffer(&buf,
-					  "  d.datcollate as \"%s\",\n"
-					  "  d.datctype as \"%s\",\n",
+					  gettext_noop("Encoding"),
 					  gettext_noop("Collate"),
 					  gettext_noop("Ctype"));
 	if (pset.sversion >= 150000)
 		appendPQExpBuffer(&buf,
-						  "  d.daticulocale as \"%s\",\n",
-						  gettext_noop("ICU Locale"));
+						  "       d.daticulocale as \"%s\",\n"
+						  "       CASE d.datlocprovider WHEN 'c' THEN 'libc' WHEN 'i' THEN 'icu' END AS \"%s\",\n",
+						  gettext_noop("ICU Locale"),
+						  gettext_noop("Locale Provider"));
 	else
 		appendPQExpBuffer(&buf,
-						  "  NULL as \"%s\",\n",
-						  gettext_noop("ICU Locale"));
-	if (pset.sversion >= 160000)
-		appendPQExpBuffer(&buf,
-						  "  d.daticurules as \"%s\",\n",
-						  gettext_noop("ICU Rules"));
-	else
-		appendPQExpBuffer(&buf,
-						  "  NULL as \"%s\",\n",
-						  gettext_noop("ICU Rules"));
-	appendPQExpBufferStr(&buf, "  ");
+						  "       NULL as \"%s\",\n"
+						  "       'libc' AS \"%s\",\n",
+						  gettext_noop("ICU Locale"),
+						  gettext_noop("Locale Provider"));
+	appendPQExpBufferStr(&buf, "       ");
 	printACLColumn(&buf, "d.datacl");
 	if (verbose)
 		appendPQExpBuffer(&buf,
-						  ",\n  CASE WHEN pg_catalog.has_database_privilege(d.datname, 'CONNECT')\n"
-						  "       THEN pg_catalog.pg_size_pretty(pg_catalog.pg_database_size(d.datname))\n"
-						  "       ELSE 'No Access'\n"
-						  "  END as \"%s\""
-						  ",\n  t.spcname as \"%s\""
-						  ",\n  pg_catalog.shobj_description(d.oid, 'pg_database') as \"%s\"",
+						  ",\n       CASE WHEN pg_catalog.has_database_privilege(d.datname, 'CONNECT')\n"
+						  "            THEN pg_catalog.pg_size_pretty(pg_catalog.pg_database_size(d.datname))\n"
+						  "            ELSE 'No Access'\n"
+						  "       END as \"%s\""
+						  ",\n       t.spcname as \"%s\""
+						  ",\n       pg_catalog.shobj_description(d.oid, 'pg_database') as \"%s\"",
 						  gettext_noop("Size"),
 						  gettext_noop("Tablespace"),
 						  gettext_noop("Description"));
@@ -1011,7 +1002,7 @@ listAllDbs(const char *pattern, bool verbose)
  * \z (now also \dp -- perhaps more mnemonic)
  */
 bool
-permissionsList(const char *pattern, bool showSystem)
+permissionsList(const char *pattern)
 {
 	PQExpBufferData buf;
 	PGresult   *res;
@@ -1130,13 +1121,15 @@ permissionsList(const char *pattern, bool showSystem)
 						 CppAsString2(RELKIND_FOREIGN_TABLE) ","
 						 CppAsString2(RELKIND_PARTITIONED_TABLE) ")\n");
 
-	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "      AND n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
-
+	/*
+	 * Unless a schema pattern is specified, we suppress system and temp
+	 * tables, since they normally aren't very interesting from a permissions
+	 * point of view.  You can see 'em by explicit request though, eg with \z
+	 * pg_catalog.*
+	 */
 	if (!validateSQLNamePattern(&buf, pattern, true, false,
 								"n.nspname", "c.relname", NULL,
-								"pg_catalog.pg_table_is_visible(c.oid)",
+								"n.nspname !~ '^pg_' AND pg_catalog.pg_table_is_visible(c.oid)",
 								NULL, 3))
 		goto error_return;
 
@@ -1827,7 +1820,8 @@ describeOneTableDetails(const char *schemaname,
 
 		printQuery(res, &myopt, pset.queryFout, false, pset.logfile);
 
-		free(footers[0]);
+		if (footers[0])
+			free(footers[0]);
 
 		retval = true;
 		goto error_return;		/* not an error, just return early */
@@ -2155,9 +2149,9 @@ describeOneTableDetails(const char *schemaname,
 						  "SELECT inhparent::pg_catalog.regclass,\n"
 						  "  pg_catalog.pg_get_expr(c.relpartbound, c.oid),\n  ");
 
-		appendPQExpBufferStr(&buf,
-							 pset.sversion >= 140000 ? "inhdetachpending" :
-							 "false as inhdetachpending");
+		appendPQExpBuffer(&buf,
+						  pset.sversion >= 140000 ? "inhdetachpending" :
+						  "false as inhdetachpending");
 
 		/* If verbose, also request the partition constraint definition */
 		if (verbose)
@@ -2318,7 +2312,7 @@ describeOneTableDetails(const char *schemaname,
 				printfPQExpBuffer(&tmpbuf, _("unique"));
 				if (strcmp(indnullsnotdistinct, "t") == 0)
 					appendPQExpBufferStr(&tmpbuf, _(" nulls not distinct"));
-				appendPQExpBufferStr(&tmpbuf, _(", "));
+				appendPQExpBuffer(&tmpbuf, _(", "));
 			}
 			else
 				resetPQExpBuffer(&tmpbuf);
@@ -3452,8 +3446,6 @@ describeOneTableDetails(const char *schemaname,
 				if (child_relkind == RELKIND_PARTITIONED_TABLE ||
 					child_relkind == RELKIND_PARTITIONED_INDEX)
 					appendPQExpBufferStr(&buf, ", PARTITIONED");
-				else if (child_relkind == RELKIND_FOREIGN_TABLE)
-					appendPQExpBufferStr(&buf, ", FOREIGN");
 				if (strcmp(PQgetvalue(result, i, 2), "t") == 0)
 					appendPQExpBufferStr(&buf, " (DETACH PENDING)");
 				if (i < tuples - 1)
@@ -3533,9 +3525,11 @@ error_return:
 	termPQExpBuffer(&title);
 	termPQExpBuffer(&tmpbuf);
 
-	free(view_def);
+	if (view_def)
+		free(view_def);
 
-	PQclear(res);
+	if (res)
+		PQclear(res);
 
 	return retval;
 }
@@ -3776,16 +3770,13 @@ listDbRoleSettings(const char *pattern, const char *pattern2)
 	initPQExpBuffer(&buf);
 
 	printfPQExpBuffer(&buf, "SELECT rolname AS \"%s\", datname AS \"%s\",\n"
-					  "pg_catalog.array_to_string(setconfig, E'\\n') AS \"%s\"",
+					  "pg_catalog.array_to_string(setconfig, E'\\n') AS \"%s\"\n"
+					  "FROM pg_catalog.pg_db_role_setting s\n"
+					  "LEFT JOIN pg_catalog.pg_database d ON d.oid = setdatabase\n"
+					  "LEFT JOIN pg_catalog.pg_roles r ON r.oid = setrole\n",
 					  gettext_noop("Role"),
 					  gettext_noop("Database"),
 					  gettext_noop("Settings"));
-	if (pset.sversion >= 160000)
-		appendPQExpBuffer(&buf, ",\npg_catalog.array_to_string(setuser, E'\\n') AS \"%s\"",
-						  gettext_noop("User set"));
-	appendPQExpBuffer(&buf, "\nFROM pg_catalog.pg_db_role_setting s\n"
-					  "LEFT JOIN pg_catalog.pg_database d ON d.oid = setdatabase\n"
-					  "LEFT JOIN pg_catalog.pg_roles r ON r.oid = setrole\n");
 	if (!validateSQLNamePattern(&buf, pattern, false, false,
 								NULL, "r.rolname", NULL, NULL, &havewhere, 1))
 		goto error_return;
@@ -4863,64 +4854,52 @@ listCollations(const char *pattern, bool verbose, bool showSystem)
 	PQExpBufferData buf;
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
-	static const bool translate_columns[] = {false, false, false, false, false, false, false, true, false};
+	static const bool translate_columns[] = {false, false, false, false, false, false, true, false};
 
 	initPQExpBuffer(&buf);
 
 	printfPQExpBuffer(&buf,
-					  "SELECT\n"
-					  "  n.nspname AS \"%s\",\n"
-					  "  c.collname AS \"%s\",\n",
+					  "SELECT n.nspname AS \"%s\",\n"
+					  "       c.collname AS \"%s\",\n"
+					  "       c.collcollate AS \"%s\",\n"
+					  "       c.collctype AS \"%s\"",
 					  gettext_noop("Schema"),
-					  gettext_noop("Name"));
-
-	if (pset.sversion >= 100000)
-		appendPQExpBuffer(&buf,
-						  "  CASE c.collprovider WHEN 'd' THEN 'default' WHEN 'c' THEN 'libc' WHEN 'i' THEN 'icu' END AS \"%s\",\n",
-						  gettext_noop("Provider"));
-	else
-		appendPQExpBuffer(&buf,
-						  "  'libc' AS \"%s\",\n",
-						  gettext_noop("Provider"));
-
-	appendPQExpBuffer(&buf,
-					  "  c.collcollate AS \"%s\",\n"
-					  "  c.collctype AS \"%s\",\n",
+					  gettext_noop("Name"),
 					  gettext_noop("Collate"),
 					  gettext_noop("Ctype"));
 
 	if (pset.sversion >= 150000)
 		appendPQExpBuffer(&buf,
-						  "  c.colliculocale AS \"%s\",\n",
+						  ",\n       c.colliculocale AS \"%s\"",
 						  gettext_noop("ICU Locale"));
 	else
 		appendPQExpBuffer(&buf,
-						  "  c.collcollate AS \"%s\",\n",
+						  ",\n       c.collcollate AS \"%s\"",
 						  gettext_noop("ICU Locale"));
 
-	if (pset.sversion >= 160000)
+	if (pset.sversion >= 100000)
 		appendPQExpBuffer(&buf,
-						  "  c.collicurules AS \"%s\",\n",
-						  gettext_noop("ICU Rules"));
+						  ",\n       CASE c.collprovider WHEN 'd' THEN 'default' WHEN 'c' THEN 'libc' WHEN 'i' THEN 'icu' END AS \"%s\"",
+						  gettext_noop("Provider"));
 	else
 		appendPQExpBuffer(&buf,
-						  "  NULL AS \"%s\",\n",
-						  gettext_noop("ICU Rules"));
+						  ",\n       'libc' AS \"%s\"",
+						  gettext_noop("Provider"));
 
 	if (pset.sversion >= 120000)
 		appendPQExpBuffer(&buf,
-						  "  CASE WHEN c.collisdeterministic THEN '%s' ELSE '%s' END AS \"%s\"",
+						  ",\n       CASE WHEN c.collisdeterministic THEN '%s' ELSE '%s' END AS \"%s\"",
 						  gettext_noop("yes"), gettext_noop("no"),
 						  gettext_noop("Deterministic?"));
 	else
 		appendPQExpBuffer(&buf,
-						  "  '%s' AS \"%s\"",
+						  ",\n       '%s' AS \"%s\"",
 						  gettext_noop("yes"),
 						  gettext_noop("Deterministic?"));
 
 	if (verbose)
 		appendPQExpBuffer(&buf,
-						  ",\n  pg_catalog.obj_description(c.oid, 'pg_collation') AS \"%s\"",
+						  ",\n       pg_catalog.obj_description(c.oid, 'pg_collation') AS \"%s\"",
 						  gettext_noop("Description"));
 
 	appendPQExpBufferStr(&buf,
@@ -6493,7 +6472,7 @@ describeSubscriptions(const char *pattern, bool verbose)
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
 	static const bool translate_columns[] = {false, false, false, false,
-	false, false, false, false, false, false, false, false, false};
+	false, false, false, false, false, false, false};
 
 	if (pset.sversion < 100000)
 	{
@@ -6521,24 +6500,11 @@ describeSubscriptions(const char *pattern, bool verbose)
 	{
 		/* Binary mode and streaming are only supported in v14 and higher */
 		if (pset.sversion >= 140000)
-		{
 			appendPQExpBuffer(&buf,
-							  ", subbinary AS \"%s\"\n",
-							  gettext_noop("Binary"));
-
-			if (pset.sversion >= 160000)
-				appendPQExpBuffer(&buf,
-								  ", (CASE substream\n"
-								  "    WHEN 'f' THEN 'off'\n"
-								  "    WHEN 't' THEN 'on'\n"
-								  "    WHEN 'p' THEN 'parallel'\n"
-								  "   END) AS \"%s\"\n",
-								  gettext_noop("Streaming"));
-			else
-				appendPQExpBuffer(&buf,
-								  ", substream AS \"%s\"\n",
-								  gettext_noop("Streaming"));
-		}
+							  ", subbinary AS \"%s\"\n"
+							  ", substream AS \"%s\"\n",
+							  gettext_noop("Binary"),
+							  gettext_noop("Streaming"));
 
 		/* Two_phase and disable_on_error are only supported in v15 and higher */
 		if (pset.sversion >= 150000)
@@ -6547,13 +6513,6 @@ describeSubscriptions(const char *pattern, bool verbose)
 							  ", subdisableonerr AS \"%s\"\n",
 							  gettext_noop("Two-phase commit"),
 							  gettext_noop("Disable on error"));
-
-		if (pset.sversion >= 160000)
-			appendPQExpBuffer(&buf,
-							  ", suborigin AS \"%s\"\n"
-							  ", subrunasowner AS \"%s\"\n",
-							  gettext_noop("Origin"),
-							  gettext_noop("Run as Owner?"));
 
 		appendPQExpBuffer(&buf,
 						  ",  subsynccommit AS \"%s\"\n"

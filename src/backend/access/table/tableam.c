@@ -3,7 +3,7 @@
  * tableam.c
  *		Table access method routines too big to be inline functions.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -172,18 +172,19 @@ table_parallelscan_initialize(Relation rel, ParallelTableScanDesc pscan,
 }
 
 TableScanDesc
-table_beginscan_parallel(Relation relation, ParallelTableScanDesc pscan)
+table_beginscan_parallel(Relation relation, ParallelTableScanDesc parallel_scan)
 {
 	Snapshot	snapshot;
 	uint32		flags = SO_TYPE_SEQSCAN |
 	SO_ALLOW_STRAT | SO_ALLOW_SYNC | SO_ALLOW_PAGEMODE;
 
-	Assert(RelationGetRelid(relation) == pscan->phs_relid);
+	Assert(RelationGetRelid(relation) == parallel_scan->phs_relid);
 
-	if (!pscan->phs_snapshot_any)
+	if (!parallel_scan->phs_snapshot_any)
 	{
 		/* Snapshot was serialized -- restore it */
-		snapshot = RestoreSnapshot((char *) pscan + pscan->phs_snapshot_off);
+		snapshot = RestoreSnapshot((char *) parallel_scan +
+								   parallel_scan->phs_snapshot_off);
 		RegisterSnapshot(snapshot);
 		flags |= SO_TEMP_SNAPSHOT;
 	}
@@ -194,7 +195,7 @@ table_beginscan_parallel(Relation relation, ParallelTableScanDesc pscan)
 	}
 
 	return relation->rd_tableam->scan_begin(relation, snapshot, 0, NULL,
-											pscan, flags);
+											parallel_scan, flags);
 }
 
 
@@ -345,7 +346,7 @@ void
 simple_table_tuple_update(Relation rel, ItemPointer otid,
 						  TupleTableSlot *slot,
 						  Snapshot snapshot,
-						  TU_UpdateIndexes *update_indexes)
+						  bool *update_indexes)
 {
 	TM_Result	result;
 	TM_FailureData tmfd;

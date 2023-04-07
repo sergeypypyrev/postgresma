@@ -187,8 +187,6 @@ select original > 1 as initially_multibatch, final > original as increased_batch
 $$
   select count(*) from simple r join simple s using (id);
 $$);
--- parallel full multi-batch hash join
-select count(*) from simple r full outer join simple s using (id);
 rollback to settings;
 
 -- The "bad" case: during execution we need to increase number of
@@ -437,16 +435,7 @@ explain (costs off)
 select  count(*) from simple r full outer join simple s using (id);
 rollback to settings;
 
--- parallelism not possible with parallel-oblivious full hash join
-savepoint settings;
-set enable_parallel_hash = off;
-set local max_parallel_workers_per_gather = 2;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s using (id);
-select  count(*) from simple r full outer join simple s using (id);
-rollback to settings;
-
--- parallelism is possible with parallel-aware full hash join
+-- parallelism not possible with parallel-oblivious outer hash join
 savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 explain (costs off)
@@ -454,7 +443,7 @@ explain (costs off)
 select  count(*) from simple r full outer join simple s using (id);
 rollback to settings;
 
--- A full outer join where every record is not matched.
+-- An full outer join where every record is not matched.
 
 -- non-parallel
 savepoint settings;
@@ -464,23 +453,13 @@ explain (costs off)
 select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
 rollback to settings;
 
--- parallelism not possible with parallel-oblivious full hash join
-savepoint settings;
-set enable_parallel_hash = off;
-set local max_parallel_workers_per_gather = 2;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-rollback to settings;
-
--- parallelism is possible with parallel-aware full hash join
+-- parallelism not possible with parallel-oblivious outer hash join
 savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 explain (costs off)
      select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
 select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
 rollback to settings;
-
 
 -- exercise special code paths for huge tuples (note use of non-strict
 -- expression and left join required to get the detoasted tuple into

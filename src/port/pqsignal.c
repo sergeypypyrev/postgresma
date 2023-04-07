@@ -4,7 +4,7 @@
  *	  reliable BSD-style signal(2) routine stolen from RWW who stole it
  *	  from Stevens...
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -29,9 +29,7 @@
 
 #include <signal.h>
 
-#ifndef FRONTEND
-#include "libpq/pqsignal.h"
-#endif
+#if !defined(WIN32) || defined(FRONTEND)
 
 /*
  * Set up a signal handler, with SA_RESTART, for signal "signo"
@@ -41,7 +39,7 @@
 pqsigfunc
 pqsignal(int signo, pqsigfunc func)
 {
-#if !(defined(WIN32) && defined(FRONTEND))
+#ifndef WIN32
 	struct sigaction act,
 				oact;
 
@@ -55,8 +53,9 @@ pqsignal(int signo, pqsigfunc func)
 	if (sigaction(signo, &act, &oact) < 0)
 		return SIG_ERR;
 	return oact.sa_handler;
-#else
-	/* Forward to Windows native signal system. */
+#else							/* WIN32 */
 	return signal(signo, func);
 #endif
 }
+
+#endif							/* !defined(WIN32) || defined(FRONTEND) */

@@ -26,7 +26,7 @@
  *	before ExecutorEnd.  This can be omitted only in case of EXPLAIN,
  *	which should also omit ExecutorRun.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -54,7 +54,6 @@
 #include "jit/jit.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
-#include "parser/parse_relation.h"
 #include "parser/parsetree.h"
 #include "storage/bufmgr.h"
 #include "storage/lmgr.h"
@@ -75,7 +74,7 @@ ExecutorRun_hook_type ExecutorRun_hook = NULL;
 ExecutorFinish_hook_type ExecutorFinish_hook = NULL;
 ExecutorEnd_hook_type ExecutorEnd_hook = NULL;
 
-/* Hook for plugin to get control in ExecCheckPermissions() */
+/* Hook for plugin to get control in ExecCheckRTPerms() */
 ExecutorCheckPerms_hook_type ExecutorCheckPerms_hook = NULL;
 
 /* decls for local routines only used within this module */
@@ -91,10 +90,10 @@ static void ExecutePlan(EState *estate, PlanState *planstate,
 						ScanDirection direction,
 						DestReceiver *dest,
 						bool execute_once);
-static bool ExecCheckOneRelPerms(RTEPermissionInfo *perminfo);
-static bool ExecCheckPermissionsModified(Oid relOid, Oid userid,
-										 Bitmapset *modifiedCols,
-										 AclMode requiredPerms);
+static bool ExecCheckRTEPerms(RangeTblEntry *rte);
+static bool ExecCheckRTEPermsModified(Oid relOid, Oid userid,
+									  Bitmapset *modifiedCols,
+									  AclMode requiredPerms);
 static void ExecCheckXactReadOnly(PlannedStmt *plannedstmt);
 static char *ExecBuildSlotValueDescription(Oid reloid,
 										   TupleTableSlot *slot,
@@ -134,7 +133,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	/*
 	 * In some cases (e.g. an EXECUTE statement) a query execution will skip
 	 * parse analysis, which means that the query_id won't be reported.  Note
-	 * that it's harmless to report the query_id multiple times, as the call
+	 * that it's harmless to report the query_id multiple time, as the call
 	 * will be ignored if the top level query_id has already been reported.
 	 */
 	pgstat_report_query_id(queryDesc->plannedstmt->queryId, false);
@@ -555,8 +554,8 @@ ExecutorRewind(QueryDesc *queryDesc)
 
 
 /*
- * ExecCheckPermissions
- *		Check access permissions of relations mentioned in a query
+ * ExecCheckRTPerms
+ *		Check access permissions for all relations listed in a range table.
  *
  * Returns true if permissions are adequate.  Otherwise, throws an appropriate
  * error if ereport_on_violation is true, or simply returns false otherwise.
@@ -566,65 +565,73 @@ ExecutorRewind(QueryDesc *queryDesc)
  * passing, then RLS also needs to be consulted (and check_enable_rls()).
  *
  * See rewrite/rowsecurity.c.
- *
- * NB: rangeTable is no longer used by us, but kept around for the hooks that
- * might still want to look at the RTEs.
  */
 bool
-ExecCheckPermissions(List *rangeTable, List *rteperminfos,
-					 bool ereport_on_violation)
+ExecCheckRTPerms(List *rangeTable, bool ereport_on_violation)
 {
 	ListCell   *l;
 	bool		result = true;
 
-	foreach(l, rteperminfos)
+	foreach(l, rangeTable)
 	{
-		RTEPermissionInfo *perminfo = lfirst_node(RTEPermissionInfo, l);
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(l);
 
-		Assert(OidIsValid(perminfo->relid));
-		result = ExecCheckOneRelPerms(perminfo);
+		result = ExecCheckRTEPerms(rte);
 		if (!result)
 		{
+			Assert(rte->rtekind == RTE_RELATION);
 			if (ereport_on_violation)
-				aclcheck_error(ACLCHECK_NO_PRIV,
-							   get_relkind_objtype(get_rel_relkind(perminfo->relid)),
-							   get_rel_name(perminfo->relid));
+				aclcheck_error(ACLCHECK_NO_PRIV, get_relkind_objtype(get_rel_relkind(rte->relid)),
+							   get_rel_name(rte->relid));
 			return false;
 		}
 	}
 
 	if (ExecutorCheckPerms_hook)
-		result = (*ExecutorCheckPerms_hook) (rangeTable, rteperminfos,
+		result = (*ExecutorCheckPerms_hook) (rangeTable,
 											 ereport_on_violation);
 	return result;
 }
 
 /*
- * ExecCheckOneRelPerms
- *		Check access permissions for a single relation.
+ * ExecCheckRTEPerms
+ *		Check access permissions for a single RTE.
  */
 static bool
-ExecCheckOneRelPerms(RTEPermissionInfo *perminfo)
+ExecCheckRTEPerms(RangeTblEntry *rte)
 {
 	AclMode		requiredPerms;
 	AclMode		relPerms;
 	AclMode		remainingPerms;
+	Oid			relOid;
 	Oid			userid;
-	Oid			relOid = perminfo->relid;
 
-	requiredPerms = perminfo->requiredPerms;
-	Assert(requiredPerms != 0);
+	/*
+	 * Only plain-relation RTEs need to be checked here.  Function RTEs are
+	 * checked when the function is prepared for execution.  Join, subquery,
+	 * and special RTEs need no checks.
+	 */
+	if (rte->rtekind != RTE_RELATION)
+		return true;
+
+	/*
+	 * No work if requiredPerms is empty.
+	 */
+	requiredPerms = rte->requiredPerms;
+	if (requiredPerms == 0)
+		return true;
+
+	relOid = rte->relid;
 
 	/*
 	 * userid to check as: current user unless we have a setuid indication.
 	 *
 	 * Note: GetUserId() is presently fast enough that there's no harm in
-	 * calling it separately for each relation.  If that stops being true, we
-	 * could call it once in ExecCheckPermissions and pass the userid down
-	 * from there.  But for now, no need for the extra clutter.
+	 * calling it separately for each RTE.  If that stops being true, we could
+	 * call it once in ExecCheckRTPerms and pass the userid down from there.
+	 * But for now, no need for the extra clutter.
 	 */
-	userid = OidIsValid(perminfo->checkAsUser) ?
-		perminfo->checkAsUser : GetUserId();
+	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
 
 	/*
 	 * We must have *all* the requiredPerms bits, but some of the bits can be
@@ -658,14 +665,14 @@ ExecCheckOneRelPerms(RTEPermissionInfo *perminfo)
 			 * example, SELECT COUNT(*) FROM table), allow the query if we
 			 * have SELECT on any column of the rel, as per SQL spec.
 			 */
-			if (bms_is_empty(perminfo->selectedCols))
+			if (bms_is_empty(rte->selectedCols))
 			{
 				if (pg_attribute_aclcheck_all(relOid, userid, ACL_SELECT,
 											  ACLMASK_ANY) != ACLCHECK_OK)
 					return false;
 			}
 
-			while ((col = bms_next_member(perminfo->selectedCols, col)) >= 0)
+			while ((col = bms_next_member(rte->selectedCols, col)) >= 0)
 			{
 				/* bit #s are offset by FirstLowInvalidHeapAttributeNumber */
 				AttrNumber	attno = col + FirstLowInvalidHeapAttributeNumber;
@@ -690,31 +697,29 @@ ExecCheckOneRelPerms(RTEPermissionInfo *perminfo)
 		 * Basically the same for the mod columns, for both INSERT and UPDATE
 		 * privilege as specified by remainingPerms.
 		 */
-		if (remainingPerms & ACL_INSERT &&
-			!ExecCheckPermissionsModified(relOid,
-										  userid,
-										  perminfo->insertedCols,
-										  ACL_INSERT))
+		if (remainingPerms & ACL_INSERT && !ExecCheckRTEPermsModified(relOid,
+																	  userid,
+																	  rte->insertedCols,
+																	  ACL_INSERT))
 			return false;
 
-		if (remainingPerms & ACL_UPDATE &&
-			!ExecCheckPermissionsModified(relOid,
-										  userid,
-										  perminfo->updatedCols,
-										  ACL_UPDATE))
+		if (remainingPerms & ACL_UPDATE && !ExecCheckRTEPermsModified(relOid,
+																	  userid,
+																	  rte->updatedCols,
+																	  ACL_UPDATE))
 			return false;
 	}
 	return true;
 }
 
 /*
- * ExecCheckPermissionsModified
- *		Check INSERT or UPDATE access permissions for a single relation (these
+ * ExecCheckRTEPermsModified
+ *		Check INSERT or UPDATE access permissions for a single RTE (these
  *		are processed uniformly).
  */
 static bool
-ExecCheckPermissionsModified(Oid relOid, Oid userid, Bitmapset *modifiedCols,
-							 AclMode requiredPerms)
+ExecCheckRTEPermsModified(Oid relOid, Oid userid, Bitmapset *modifiedCols,
+						  AclMode requiredPerms)
 {
 	int			col = -1;
 
@@ -768,14 +773,17 @@ ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 	 * Fail if write permissions are requested in parallel mode for table
 	 * (temp or non-temp), otherwise fail for any non-temp table.
 	 */
-	foreach(l, plannedstmt->permInfos)
+	foreach(l, plannedstmt->rtable)
 	{
-		RTEPermissionInfo *perminfo = lfirst_node(RTEPermissionInfo, l);
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(l);
 
-		if ((perminfo->requiredPerms & (~ACL_SELECT)) == 0)
+		if (rte->rtekind != RTE_RELATION)
 			continue;
 
-		if (isTempNamespace(get_rel_namespace(perminfo->relid)))
+		if ((rte->requiredPerms & (~ACL_SELECT)) == 0)
+			continue;
+
+		if (isTempNamespace(get_rel_namespace(rte->relid)))
 			continue;
 
 		PreventCommandIfReadOnly(CreateCommandName((Node *) plannedstmt));
@@ -809,15 +817,14 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	/*
 	 * Do permissions checks
 	 */
-	ExecCheckPermissions(rangeTable, plannedstmt->permInfos, true);
+	ExecCheckRTPerms(rangeTable, true);
 
 	/*
 	 * initialize the node's execution state
 	 */
-	ExecInitRangeTable(estate, rangeTable, plannedstmt->permInfos);
+	ExecInitRangeTable(estate, rangeTable);
 
 	estate->es_plannedstmt = plannedstmt;
-	estate->es_part_prune_infos = plannedstmt->partPruneInfos;
 
 	/*
 	 * Next, build the ExecRowMark array from the PlanRowMark(s), if any.
@@ -911,7 +918,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		 * prepared to handle REWIND efficiently; otherwise there is no need.
 		 */
 		sp_eflags = eflags
-			& ~(EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK);
+			& (EXEC_FLAG_EXPLAIN_ONLY | EXEC_FLAG_WITH_NO_DATA);
 		if (bms_is_member(i, plannedstmt->rewindPlanIDs))
 			sp_eflags |= EXEC_FLAG_REWIND;
 
@@ -1224,7 +1231,6 @@ InitResultRelInfo(ResultRelInfo *resultRelInfo,
 
 	/* The following fields are set later if needed */
 	resultRelInfo->ri_RowIdAttNo = 0;
-	resultRelInfo->ri_extraUpdatedCols = NULL;
 	resultRelInfo->ri_projectNew = NULL;
 	resultRelInfo->ri_newTupleSlot = NULL;
 	resultRelInfo->ri_oldTupleSlot = NULL;
@@ -1232,8 +1238,7 @@ InitResultRelInfo(ResultRelInfo *resultRelInfo,
 	resultRelInfo->ri_FdwState = NULL;
 	resultRelInfo->ri_usesFdwDirectModify = false;
 	resultRelInfo->ri_ConstraintExprs = NULL;
-	resultRelInfo->ri_GeneratedExprsI = NULL;
-	resultRelInfo->ri_GeneratedExprsU = NULL;
+	resultRelInfo->ri_GeneratedExprs = NULL;
 	resultRelInfo->ri_projectReturning = NULL;
 	resultRelInfo->ri_onConflictArbiterIndexes = NIL;
 	resultRelInfo->ri_onConflict = NULL;
@@ -1250,11 +1255,9 @@ InitResultRelInfo(ResultRelInfo *resultRelInfo,
 	 * this field is filled in ExecInitModifyTable().
 	 */
 	resultRelInfo->ri_RootResultRelInfo = partition_root_rri;
-	/* Set by ExecGetRootToChildMap */
-	resultRelInfo->ri_RootToChildMap = NULL;
-	resultRelInfo->ri_RootToChildMapValid = false;
-	/* Set by ExecInitRoutingInfo */
-	resultRelInfo->ri_PartitionTupleSlot = NULL;
+	resultRelInfo->ri_RootToPartitionMap = NULL;	/* set by
+													 * ExecInitRoutingInfo */
+	resultRelInfo->ri_PartitionTupleSlot = NULL;	/* ditto */
 	resultRelInfo->ri_ChildToRootMap = NULL;
 	resultRelInfo->ri_ChildToRootMapValid = false;
 	resultRelInfo->ri_CopyMultiInsertBuffer = NULL;
@@ -1688,7 +1691,7 @@ ExecutePlan(EState *estate,
 	 * point.
 	 */
 	if (!(estate->es_top_eflags & EXEC_FLAG_BACKWARD))
-		ExecShutdownNode(planstate);
+		(void) ExecShutdownNode(planstate);
 
 	if (use_parallel_mode)
 		ExitParallelMode();
@@ -1855,7 +1858,7 @@ ExecPartitionCheckEmitError(ResultRelInfo *resultRelInfo,
 
 		old_tupdesc = RelationGetDescr(resultRelInfo->ri_RelationDesc);
 		/* a reverse map */
-		map = build_attrmap_by_name_if_req(old_tupdesc, tupdesc, false);
+		map = build_attrmap_by_name_if_req(old_tupdesc, tupdesc);
 
 		/*
 		 * Partition-specific slot's tupdesc can't be changed, so allocate a
@@ -1940,8 +1943,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 					tupdesc = RelationGetDescr(rootrel->ri_RelationDesc);
 					/* a reverse map */
 					map = build_attrmap_by_name_if_req(orig_tupdesc,
-													   tupdesc,
-													   false);
+													   tupdesc);
 
 					/*
 					 * Partition-specific slot's tupdesc can't be changed, so
@@ -1993,8 +1995,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 				tupdesc = RelationGetDescr(rootrel->ri_RelationDesc);
 				/* a reverse map */
 				map = build_attrmap_by_name_if_req(old_tupdesc,
-												   tupdesc,
-												   false);
+												   tupdesc);
 
 				/*
 				 * Partition-specific slot's tupdesc can't be changed, so
@@ -2101,8 +2102,7 @@ ExecWithCheckOptions(WCOKind kind, ResultRelInfo *resultRelInfo,
 						tupdesc = RelationGetDescr(rootrel->ri_RelationDesc);
 						/* a reverse map */
 						map = build_attrmap_by_name_if_req(old_tupdesc,
-														   tupdesc,
-														   false);
+														   tupdesc);
 
 						/*
 						 * Partition-specific slot's tupdesc can't be changed,
@@ -2805,12 +2805,11 @@ EvalPlanQualStart(EPQState *epqstate, Plan *planTree)
 	rcestate->es_range_table = parentestate->es_range_table;
 	rcestate->es_range_table_size = parentestate->es_range_table_size;
 	rcestate->es_relations = parentestate->es_relations;
+	rcestate->es_queryEnv = parentestate->es_queryEnv;
 	rcestate->es_rowmarks = parentestate->es_rowmarks;
-	rcestate->es_rteperminfos = parentestate->es_rteperminfos;
 	rcestate->es_plannedstmt = parentestate->es_plannedstmt;
 	rcestate->es_junkFilter = parentestate->es_junkFilter;
 	rcestate->es_output_cid = parentestate->es_output_cid;
-	rcestate->es_queryEnv = parentestate->es_queryEnv;
 
 	/*
 	 * ResultRelInfos needed by subplans are initialized from scratch when the

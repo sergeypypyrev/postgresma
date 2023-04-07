@@ -21,7 +21,7 @@
  * should be killed by SIGQUIT and then a recovery cycle started.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -215,7 +215,7 @@ BackgroundWriterMain(void)
 	/*
 	 * Unblock signals (they were blocked when the postmaster forked us)
 	 */
-	sigprocmask(SIG_SETMASK, &UnBlockSig, NULL);
+	PG_SETMASK(&UnBlockSig);
 
 	/*
 	 * Reset hibernation state after any error.

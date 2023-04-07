@@ -46,7 +46,5 @@
 /show.c
 /sqlda
 /sqlda.c
-/sqljson
-/sqljson.c
 /twophase
 /twophase.c

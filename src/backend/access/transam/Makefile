@@ -29,7 +29,6 @@ OBJS = \
 	xact.o \
 	xlog.o \
 	xlogarchive.o \
-	xlogbackup.o \
 	xlogfuncs.o \
 	xloginsert.o \
 	xlogprefetcher.o \

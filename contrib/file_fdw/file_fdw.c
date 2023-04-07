@@ -3,7 +3,7 @@
  * file_fdw.c
  *		  foreign-data wrapper for server-side flat files (or programs).
  *
- * Copyright (c) 2010-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/file_fdw/file_fdw.c
@@ -37,7 +37,6 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/sampling.h"
-#include "utils/varlena.h"
 
 PG_MODULE_MAGIC;
 
@@ -72,7 +71,6 @@ static const struct FileFdwOption valid_options[] = {
 	{"quote", ForeignTableRelationId},
 	{"escape", ForeignTableRelationId},
 	{"null", ForeignTableRelationId},
-	{"default", ForeignTableRelationId},
 	{"encoding", ForeignTableRelationId},
 	{"force_not_null", AttributeRelationId},
 	{"force_null", AttributeRelationId},
@@ -216,32 +214,27 @@ file_fdw_validator(PG_FUNCTION_ARGS)
 		if (!is_valid_option(def->defname, catalog))
 		{
 			const struct FileFdwOption *opt;
-			const char *closest_match;
-			ClosestMatchState match_state;
-			bool		has_valid_options = false;
+			StringInfoData buf;
 
 			/*
 			 * Unknown option specified, complain about it. Provide a hint
-			 * with a valid option that looks similar, if there is one.
+			 * with list of valid options for the object.
 			 */
-			initClosestMatch(&match_state, def->defname, 4);
+			initStringInfo(&buf);
 			for (opt = valid_options; opt->optname; opt++)
 			{
 				if (catalog == opt->optcontext)
-				{
-					has_valid_options = true;
-					updateClosestMatch(&match_state, opt->optname);
-				}
+					appendStringInfo(&buf, "%s%s", (buf.len > 0) ? ", " : "",
+									 opt->optname);
 			}
 
-			closest_match = getClosestMatch(&match_state);
 			ereport(ERROR,
 					(errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
 					 errmsg("invalid option \"%s\"", def->defname),
-					 has_valid_options ? closest_match ?
-					 errhint("Perhaps you meant the option \"%s\".",
-							 closest_match) : 0 :
-					 errhint("There are no valid options in this context.")));
+					 buf.len > 0
+					 ? errhint("Valid options in this context are: %s",
+							   buf.data)
+					 : errhint("There are no valid options in this context.")));
 		}
 
 		/*
@@ -279,19 +272,13 @@ file_fdw_validator(PG_FUNCTION_ARGS)
 				!has_privs_of_role(GetUserId(), ROLE_PG_READ_SERVER_FILES))
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-						 errmsg("permission denied to set the \"%s\" option of a file_fdw foreign table",
-								"filename"),
-						 errdetail("Only roles with privileges of the \"%s\" role may set this option.",
-								   "pg_read_server_files")));
+						 errmsg("only superuser or a role with privileges of the pg_read_server_files role may specify the filename option of a file_fdw foreign table")));
 
 			if (strcmp(def->defname, "program") == 0 &&
 				!has_privs_of_role(GetUserId(), ROLE_PG_EXECUTE_SERVER_PROGRAM))
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-						 errmsg("permission denied to set the \"%s\" option of a file_fdw foreign table",
-								"program"),
-						 errdetail("Only roles with privileges of the \"%s\" role may set this option.",
-								   "pg_execute_server_program")));
+						 errmsg("only superuser or a role with privileges of the pg_execute_server_program role may specify the program option of a file_fdw foreign table")));
 
 			filename = defGetString(def);
 		}
@@ -457,15 +444,15 @@ get_file_fdw_attribute_options(Oid relid)
 	for (attnum = 1; attnum <= natts; attnum++)
 	{
 		Form_pg_attribute attr = TupleDescAttr(tupleDesc, attnum - 1);
-		List	   *column_options;
+		List	   *options;
 		ListCell   *lc;
 
 		/* Skip dropped attributes. */
 		if (attr->attisdropped)
 			continue;
 
-		column_options = GetForeignColumnOptions(relid, attnum);
-		foreach(lc, column_options)
+		options = GetForeignColumnOptions(relid, attnum);
+		foreach(lc, options)
 		{
 			DefElem    *def = (DefElem *) lfirst(lc);
 
@@ -487,7 +474,7 @@ get_file_fdw_attribute_options(Oid relid)
 					fncolumns = lappend(fncolumns, makeString(attname));
 				}
 			}
-			/* maybe in future handle other column options here */
+			/* maybe in future handle other options here */
 		}
 	}
 
@@ -719,9 +706,6 @@ static TupleTableSlot *
 fileIterateForeignScan(ForeignScanState *node)
 {
 	FileFdwExecutionState *festate = (FileFdwExecutionState *) node->fdw_state;
-	EState	   *estate = CreateExecutorState();
-	ExprContext *econtext;
-	MemoryContext oldcontext;
 	TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
 	bool		found;
 	ErrorContextCallback errcallback;
@@ -738,24 +722,14 @@ fileIterateForeignScan(ForeignScanState *node)
 	 * ExecStoreVirtualTuple.  If we don't find another row in the file, we
 	 * just skip the last step, leaving the slot empty as required.
 	 *
-	 * We pass ExprContext because there might be a use of the DEFAULT option
-	 * in COPY FROM, so we may need to evaluate default expressions.
+	 * We can pass ExprContext = NULL because we read all columns from the
+	 * file, so no need to evaluate default expressions.
 	 */
 	ExecClearTuple(slot);
-	econtext = GetPerTupleExprContext(estate);
-
-	/*
-	 * DEFAULT expressions need to be evaluated in a per-tuple context, so
-	 * switch in case we are doing that.
-	 */
-	oldcontext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-	found = NextCopyFrom(festate->cstate, econtext,
+	found = NextCopyFrom(festate->cstate, NULL,
 						 slot->tts_values, slot->tts_isnull);
 	if (found)
 		ExecStoreVirtualTuple(slot);
-
-	/* Switch back to original memory context */
-	MemoryContextSwitchTo(oldcontext);
 
 	/* Remove error callback. */
 	error_context_stack = errcallback.previous;
@@ -878,7 +852,7 @@ check_selective_binary_conversion(RelOptInfo *baserel,
 	ListCell   *lc;
 	Relation	rel;
 	TupleDesc	tupleDesc;
-	int			attidx;
+	AttrNumber	attnum;
 	Bitmapset  *attrs_used = NULL;
 	bool		has_wholerow = false;
 	int			numattrs;
@@ -921,11 +895,10 @@ check_selective_binary_conversion(RelOptInfo *baserel,
 	rel = table_open(foreigntableid, AccessShareLock);
 	tupleDesc = RelationGetDescr(rel);
 
-	attidx = -1;
-	while ((attidx = bms_next_member(attrs_used, attidx)) >= 0)
+	while ((attnum = bms_first_member(attrs_used)) >= 0)
 	{
-		/* attidx is zero-based, attnum is the normal attribute number */
-		AttrNumber	attnum = attidx + FirstLowInvalidHeapAttributeNumber;
+		/* Adjust for system attributes. */
+		attnum += FirstLowInvalidHeapAttributeNumber;
 
 		if (attnum == 0)
 		{

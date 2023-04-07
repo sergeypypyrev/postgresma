@@ -10,7 +10,6 @@
 #include <ctype.h>
 
 #include "ltree.h"
-#include "utils/array.h"
 
 PG_FUNCTION_INFO_V1(_ltree_isparent);
 PG_FUNCTION_INFO_V1(_ltree_r_isparent);

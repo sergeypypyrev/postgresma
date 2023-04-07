@@ -6,7 +6,7 @@
  *	  All file system operations in POSTGRES dispatch through these
  *	  routines.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -46,16 +46,16 @@ typedef struct f_smgr
 	void		(*smgr_create) (SMgrRelation reln, ForkNumber forknum,
 								bool isRedo);
 	bool		(*smgr_exists) (SMgrRelation reln, ForkNumber forknum);
-	void		(*smgr_unlink) (RelFileLocatorBackend rlocator, ForkNumber forknum,
+	void		(*smgr_unlink) (RelFileNodeBackend rnode, ForkNumber forknum,
 								bool isRedo);
 	void		(*smgr_extend) (SMgrRelation reln, ForkNumber forknum,
-								BlockNumber blocknum, const void *buffer, bool skipFsync);
+								BlockNumber blocknum, char *buffer, bool skipFsync);
 	bool		(*smgr_prefetch) (SMgrRelation reln, ForkNumber forknum,
 								  BlockNumber blocknum);
 	void		(*smgr_read) (SMgrRelation reln, ForkNumber forknum,
-							  BlockNumber blocknum, void *buffer);
+							  BlockNumber blocknum, char *buffer);
 	void		(*smgr_write) (SMgrRelation reln, ForkNumber forknum,
-							   BlockNumber blocknum, const void *buffer, bool skipFsync);
+							   BlockNumber blocknum, char *buffer, bool skipFsync);
 	void		(*smgr_writeback) (SMgrRelation reln, ForkNumber forknum,
 								   BlockNumber blocknum, BlockNumber nblocks);
 	BlockNumber (*smgr_nblocks) (SMgrRelation reln, ForkNumber forknum);
@@ -143,9 +143,9 @@ smgrshutdown(int code, Datum arg)
  *		This does not attempt to actually open the underlying file.
  */
 SMgrRelation
-smgropen(RelFileLocator rlocator, BackendId backend)
+smgropen(RelFileNode rnode, BackendId backend)
 {
-	RelFileLocatorBackend brlocator;
+	RelFileNodeBackend brnode;
 	SMgrRelation reln;
 	bool		found;
 
@@ -154,7 +154,7 @@ smgropen(RelFileLocator rlocator, BackendId backend)
 		/* First time through: initialize the hash table */
 		HASHCTL		ctl;
 
-		ctl.keysize = sizeof(RelFileLocatorBackend);
+		ctl.keysize = sizeof(RelFileNodeBackend);
 		ctl.entrysize = sizeof(SMgrRelationData);
 		SMgrRelationHash = hash_create("smgr relation table", 400,
 									   &ctl, HASH_ELEM | HASH_BLOBS);
@@ -162,10 +162,10 @@ smgropen(RelFileLocator rlocator, BackendId backend)
 	}
 
 	/* Look up or create an entry */
-	brlocator.locator = rlocator;
-	brlocator.backend = backend;
+	brnode.node = rnode;
+	brnode.backend = backend;
 	reln = (SMgrRelation) hash_search(SMgrRelationHash,
-									  &brlocator,
+									  (void *) &brnode,
 									  HASH_ENTER, &found);
 
 	/* Initialize it if not present before */
@@ -267,7 +267,7 @@ smgrclose(SMgrRelation reln)
 		dlist_delete(&reln->node);
 
 	if (hash_search(SMgrRelationHash,
-					&(reln->smgr_rlocator),
+					(void *) &(reln->smgr_rnode),
 					HASH_REMOVE, NULL) == NULL)
 		elog(ERROR, "SMgrRelation hashtable corrupted");
 
@@ -335,15 +335,15 @@ smgrcloseall(void)
 }
 
 /*
- *	smgrcloserellocator() -- Close SMgrRelation object for given RelFileLocator,
+ *	smgrclosenode() -- Close SMgrRelation object for given RelFileNode,
  *					   if one exists.
  *
- * This has the same effects as smgrclose(smgropen(rlocator)), but it avoids
+ * This has the same effects as smgrclose(smgropen(rnode)), but it avoids
  * uselessly creating a hashtable entry only to drop it again when no
  * such entry exists already.
  */
 void
-smgrcloserellocator(RelFileLocatorBackend rlocator)
+smgrclosenode(RelFileNodeBackend rnode)
 {
 	SMgrRelation reln;
 
@@ -352,7 +352,7 @@ smgrcloserellocator(RelFileLocatorBackend rlocator)
 		return;
 
 	reln = (SMgrRelation) hash_search(SMgrRelationHash,
-									  &rlocator,
+									  (void *) &rnode,
 									  HASH_FIND, NULL);
 	if (reln != NULL)
 		smgrclose(reln);
@@ -420,7 +420,7 @@ void
 smgrdounlinkall(SMgrRelation *rels, int nrels, bool isRedo)
 {
 	int			i = 0;
-	RelFileLocatorBackend *rlocators;
+	RelFileNodeBackend *rnodes;
 	ForkNumber	forknum;
 
 	if (nrels == 0)
@@ -430,19 +430,19 @@ smgrdounlinkall(SMgrRelation *rels, int nrels, bool isRedo)
 	 * Get rid of any remaining buffers for the relations.  bufmgr will just
 	 * drop them without bothering to write the contents.
 	 */
-	DropRelationsAllBuffers(rels, nrels);
+	DropRelFileNodesAllBuffers(rels, nrels);
 
 	/*
 	 * create an array which contains all relations to be dropped, and close
 	 * each relation's forks at the smgr level while at it
 	 */
-	rlocators = palloc(sizeof(RelFileLocatorBackend) * nrels);
+	rnodes = palloc(sizeof(RelFileNodeBackend) * nrels);
 	for (i = 0; i < nrels; i++)
 	{
-		RelFileLocatorBackend rlocator = rels[i]->smgr_rlocator;
+		RelFileNodeBackend rnode = rels[i]->smgr_rnode;
 		int			which = rels[i]->smgr_which;
 
-		rlocators[i] = rlocator;
+		rnodes[i] = rnode;
 
 		/* Close the forks at smgr level */
 		for (forknum = 0; forknum <= MAX_FORKNUM; forknum++)
@@ -458,7 +458,7 @@ smgrdounlinkall(SMgrRelation *rels, int nrels, bool isRedo)
 	 * closed our own smgr rel.
 	 */
 	for (i = 0; i < nrels; i++)
-		CacheInvalidateSmgr(rlocators[i]);
+		CacheInvalidateSmgr(rnodes[i]);
 
 	/*
 	 * Delete the physical file(s).
@@ -473,10 +473,10 @@ smgrdounlinkall(SMgrRelation *rels, int nrels, bool isRedo)
 		int			which = rels[i]->smgr_which;
 
 		for (forknum = 0; forknum <= MAX_FORKNUM; forknum++)
-			smgrsw[which].smgr_unlink(rlocators[i], forknum, isRedo);
+			smgrsw[which].smgr_unlink(rnodes[i], forknum, isRedo);
 	}
 
-	pfree(rlocators);
+	pfree(rnodes);
 }
 
 
@@ -491,7 +491,7 @@ smgrdounlinkall(SMgrRelation *rels, int nrels, bool isRedo)
  */
 void
 smgrextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
-		   const void *buffer, bool skipFsync)
+		   char *buffer, bool skipFsync)
 {
 	smgrsw[reln->smgr_which].smgr_extend(reln, forknum, blocknum,
 										 buffer, skipFsync);
@@ -530,7 +530,7 @@ smgrprefetch(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum)
  */
 void
 smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
-		 void *buffer)
+		 char *buffer)
 {
 	smgrsw[reln->smgr_which].smgr_read(reln, forknum, blocknum, buffer);
 }
@@ -552,7 +552,7 @@ smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
  */
 void
 smgrwrite(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
-		  const void *buffer, bool skipFsync)
+		  char *buffer, bool skipFsync)
 {
 	smgrsw[reln->smgr_which].smgr_write(reln, forknum, blocknum,
 										buffer, skipFsync);
@@ -631,7 +631,7 @@ smgrtruncate(SMgrRelation reln, ForkNumber *forknum, int nforks, BlockNumber *nb
 	 * Get rid of any buffers for the about-to-be-deleted blocks. bufmgr will
 	 * just drop them without bothering to write the contents.
 	 */
-	DropRelationBuffers(reln, forknum, nforks, nblocks);
+	DropRelFileNodeBuffers(reln, forknum, nforks, nblocks);
 
 	/*
 	 * Send a shared-inval message to force other backends to close any smgr
@@ -643,7 +643,7 @@ smgrtruncate(SMgrRelation reln, ForkNumber *forknum, int nforks, BlockNumber *nb
 	 * is a performance-critical path.)  As in the unlink code, we want to be
 	 * sure the message is sent before we start changing things on-disk.
 	 */
-	CacheInvalidateSmgr(reln->smgr_rlocator);
+	CacheInvalidateSmgr(reln->smgr_rnode);
 
 	/* Do the truncation */
 	for (i = 0; i < nforks; i++)

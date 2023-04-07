@@ -72,7 +72,7 @@ static inet *internal_inetpl(inet *ip, int64 addend);
  * Common INET/CIDR input routine
  */
 static inet *
-network_in(char *src, bool is_cidr, Node *escontext)
+network_in(char *src, bool is_cidr)
 {
 	int			bits;
 	inet	   *dst;
@@ -93,7 +93,7 @@ network_in(char *src, bool is_cidr, Node *escontext)
 	bits = pg_inet_net_pton(ip_family(dst), src, ip_addr(dst),
 							is_cidr ? ip_addrsize(dst) : -1);
 	if ((bits < 0) || (bits > ip_maxbits(dst)))
-		ereturn(escontext, NULL,
+		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 		/* translator: first %s is inet or cidr */
 				 errmsg("invalid input syntax for type %s: \"%s\"",
@@ -105,7 +105,7 @@ network_in(char *src, bool is_cidr, Node *escontext)
 	if (is_cidr)
 	{
 		if (!addressOK(ip_addr(dst), bits, ip_family(dst)))
-			ereturn(escontext, NULL,
+			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					 errmsg("invalid cidr value: \"%s\"", src),
 					 errdetail("Value has bits set to right of mask.")));
@@ -122,7 +122,7 @@ inet_in(PG_FUNCTION_ARGS)
 {
 	char	   *src = PG_GETARG_CSTRING(0);
 
-	PG_RETURN_INET_P(network_in(src, false, fcinfo->context));
+	PG_RETURN_INET_P(network_in(src, false));
 }
 
 Datum
@@ -130,7 +130,7 @@ cidr_in(PG_FUNCTION_ARGS)
 {
 	char	   *src = PG_GETARG_CSTRING(0);
 
-	PG_RETURN_INET_P(network_in(src, true, fcinfo->context));
+	PG_RETURN_INET_P(network_in(src, true));
 }
 
 
@@ -1725,7 +1725,9 @@ inet_client_addr(PG_FUNCTION_ARGS)
 	switch (port->raddr.addr.ss_family)
 	{
 		case AF_INET:
+#ifdef HAVE_IPV6
 		case AF_INET6:
+#endif
 			break;
 		default:
 			PG_RETURN_NULL();
@@ -1742,7 +1744,7 @@ inet_client_addr(PG_FUNCTION_ARGS)
 
 	clean_ipv6_addr(port->raddr.addr.ss_family, remote_host);
 
-	PG_RETURN_INET_P(network_in(remote_host, false, NULL));
+	PG_RETURN_INET_P(network_in(remote_host, false));
 }
 
 
@@ -1762,7 +1764,9 @@ inet_client_port(PG_FUNCTION_ARGS)
 	switch (port->raddr.addr.ss_family)
 	{
 		case AF_INET:
+#ifdef HAVE_IPV6
 		case AF_INET6:
+#endif
 			break;
 		default:
 			PG_RETURN_NULL();
@@ -1797,7 +1801,9 @@ inet_server_addr(PG_FUNCTION_ARGS)
 	switch (port->laddr.addr.ss_family)
 	{
 		case AF_INET:
+#ifdef HAVE_IPV6
 		case AF_INET6:
+#endif
 			break;
 		default:
 			PG_RETURN_NULL();
@@ -1814,7 +1820,7 @@ inet_server_addr(PG_FUNCTION_ARGS)
 
 	clean_ipv6_addr(port->laddr.addr.ss_family, local_host);
 
-	PG_RETURN_INET_P(network_in(local_host, false, NULL));
+	PG_RETURN_INET_P(network_in(local_host, false));
 }
 
 
@@ -1834,7 +1840,9 @@ inet_server_port(PG_FUNCTION_ARGS)
 	switch (port->laddr.addr.ss_family)
 	{
 		case AF_INET:
+#ifdef HAVE_IPV6
 		case AF_INET6:
+#endif
 			break;
 		default:
 			PG_RETURN_NULL();
@@ -1866,7 +1874,7 @@ inetnot(PG_FUNCTION_ARGS)
 		unsigned char *pip = ip_addr(ip);
 		unsigned char *pdst = ip_addr(dst);
 
-		while (--nb >= 0)
+		while (nb-- > 0)
 			pdst[nb] = ~pip[nb];
 	}
 	ip_bits(dst) = ip_bits(ip);
@@ -1898,7 +1906,7 @@ inetand(PG_FUNCTION_ARGS)
 		unsigned char *pip2 = ip_addr(ip2);
 		unsigned char *pdst = ip_addr(dst);
 
-		while (--nb >= 0)
+		while (nb-- > 0)
 			pdst[nb] = pip[nb] & pip2[nb];
 	}
 	ip_bits(dst) = Max(ip_bits(ip), ip_bits(ip2));
@@ -1930,7 +1938,7 @@ inetor(PG_FUNCTION_ARGS)
 		unsigned char *pip2 = ip_addr(ip2);
 		unsigned char *pdst = ip_addr(dst);
 
-		while (--nb >= 0)
+		while (nb-- > 0)
 			pdst[nb] = pip[nb] | pip2[nb];
 	}
 	ip_bits(dst) = Max(ip_bits(ip), ip_bits(ip2));
@@ -1955,7 +1963,7 @@ internal_inetpl(inet *ip, int64 addend)
 		unsigned char *pdst = ip_addr(dst);
 		int			carry = 0;
 
-		while (--nb >= 0)
+		while (nb-- > 0)
 		{
 			carry = pip[nb] + (int) (addend & 0xFF) + carry;
 			pdst[nb] = (unsigned char) (carry & 0xFF);
@@ -2039,7 +2047,7 @@ inetmi(PG_FUNCTION_ARGS)
 		unsigned char *pip2 = ip_addr(ip2);
 		int			carry = 1;
 
-		while (--nb >= 0)
+		while (nb-- > 0)
 		{
 			int			lobyte;
 
@@ -2094,6 +2102,7 @@ inetmi(PG_FUNCTION_ARGS)
 void
 clean_ipv6_addr(int addr_family, char *addr)
 {
+#ifdef HAVE_IPV6
 	if (addr_family == AF_INET6)
 	{
 		char	   *pct = strchr(addr, '%');
@@ -2101,4 +2110,5 @@ clean_ipv6_addr(int addr_family, char *addr)
 		if (pct)
 			*pct = '\0';
 	}
+#endif
 }

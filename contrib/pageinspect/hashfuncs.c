@@ -2,7 +2,7 @@
  * hashfuncs.c
  *		Functions to investigate the content of HASH indexes
  *
- * Copyright (c) 2017-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2017-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		contrib/pageinspect/hashfuncs.c
@@ -238,7 +238,7 @@ hash_page_stats(PG_FUNCTION_ARGS)
 	Page		page;
 	int			j;
 	Datum		values[9];
-	bool		nulls[9] = {0};
+	bool		nulls[9];
 	HashPageStat stat;
 	HeapTuple	tuple;
 	TupleDesc	tupleDesc;
@@ -260,6 +260,8 @@ hash_page_stats(PG_FUNCTION_ARGS)
 	if (get_call_result_type(fcinfo, NULL, &tupleDesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "return type must be a row type");
 	tupleDesc = BlessTupleDesc(tupleDesc);
+
+	MemSet(nulls, 0, sizeof(nulls));
 
 	j = 0;
 	values[j++] = Int32GetDatum(stat.live_items);
@@ -301,7 +303,7 @@ hash_page_items(PG_FUNCTION_ARGS)
 	Page		page;
 	Datum		result;
 	Datum		values[3];
-	bool		nulls[3] = {0};
+	bool		nulls[3];
 	uint32		hashkey;
 	HeapTuple	tuple;
 	FuncCallContext *fctx;
@@ -359,6 +361,8 @@ hash_page_items(PG_FUNCTION_ARGS)
 
 		itup = (IndexTuple) PageGetItem(uargs->page, id);
 
+		MemSet(nulls, 0, sizeof(nulls));
+
 		j = 0;
 		values[j++] = Int32GetDatum((int32) uargs->offset);
 		values[j++] = PointerGetDatum(&itup->t_tid);
@@ -405,7 +409,7 @@ hash_bitmap_info(PG_FUNCTION_ARGS)
 	int			i,
 				j;
 	Datum		values[3];
-	bool		nulls[3] = {0};
+	bool		nulls[3];
 	uint32	   *freep;
 
 	if (!superuser())
@@ -491,6 +495,8 @@ hash_bitmap_info(PG_FUNCTION_ARGS)
 		elog(ERROR, "return type must be a row type");
 	tupleDesc = BlessTupleDesc(tupleDesc);
 
+	MemSet(nulls, 0, sizeof(nulls));
+
 	j = 0;
 	values[j++] = Int64GetDatum((int64) bitmapblkno);
 	values[j++] = Int32GetDatum(bitmapbit);
@@ -520,7 +526,7 @@ hash_metapage_info(PG_FUNCTION_ARGS)
 	int			i,
 				j;
 	Datum		values[16];
-	bool		nulls[16] = {0};
+	bool		nulls[16];
 	Datum		spares[HASH_MAX_SPLITPOINTS];
 	Datum		mapp[HASH_MAX_BITMAPS];
 
@@ -537,6 +543,8 @@ hash_metapage_info(PG_FUNCTION_ARGS)
 	tupleDesc = BlessTupleDesc(tupleDesc);
 
 	metad = HashPageGetMeta(page);
+
+	MemSet(nulls, 0, sizeof(nulls));
 
 	j = 0;
 	values[j++] = Int64GetDatum((int64) metad->hashm_magic);
@@ -556,11 +564,21 @@ hash_metapage_info(PG_FUNCTION_ARGS)
 
 	for (i = 0; i < HASH_MAX_SPLITPOINTS; i++)
 		spares[i] = Int64GetDatum((int64) metad->hashm_spares[i]);
-	values[j++] = PointerGetDatum(construct_array_builtin(spares, HASH_MAX_SPLITPOINTS, INT8OID));
+	values[j++] = PointerGetDatum(construct_array(spares,
+												  HASH_MAX_SPLITPOINTS,
+												  INT8OID,
+												  sizeof(int64),
+												  FLOAT8PASSBYVAL,
+												  TYPALIGN_DOUBLE));
 
 	for (i = 0; i < HASH_MAX_BITMAPS; i++)
 		mapp[i] = Int64GetDatum((int64) metad->hashm_mapp[i]);
-	values[j++] = PointerGetDatum(construct_array_builtin(mapp, HASH_MAX_BITMAPS, INT8OID));
+	values[j++] = PointerGetDatum(construct_array(mapp,
+												  HASH_MAX_BITMAPS,
+												  INT8OID,
+												  sizeof(int64),
+												  FLOAT8PASSBYVAL,
+												  TYPALIGN_DOUBLE));
 
 	tuple = heap_form_tuple(tupleDesc, values, nulls);
 

@@ -1,7 +1,7 @@
 /* ----------
  *	DTrace probes for PostgreSQL backend
  *
- *	Copyright (c) 2006-2023, PostgreSQL Global Development Group
+ *	Copyright (c) 2006-2022, PostgreSQL Global Development Group
  *
  *	src/backend/utils/probes.d
  * ----------
@@ -66,6 +66,8 @@ provider postgresql {
 	probe buffer__sync__start(int, int);
 	probe buffer__sync__written(int);
 	probe buffer__sync__done(int, int, int);
+	probe buffer__write__dirty__start(ForkNumber, BlockNumber, Oid, Oid, Oid);
+	probe buffer__write__dirty__done(ForkNumber, BlockNumber, Oid, Oid, Oid);
 
 	probe deadlock__found();
 

@@ -1,10 +1,10 @@
-%top{
+%{
 /*-------------------------------------------------------------------------
  *
  * repl_scanner.l
  *	  a lexical scanner for the replication commands
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,19 +15,9 @@
  */
 #include "postgres.h"
 
-#include "nodes/parsenodes.h"
 #include "utils/builtins.h"
 #include "parser/scansup.h"
 
-/*
- * NB: include repl_gram.h only AFTER including walsender_private.h, because
- * walsender_private includes headers that define XLogRecPtr.
- */
-#include "replication/walsender_private.h"
-#include "repl_gram.h"
-}
-
-%{
 /* Avoid exit() on fatal scanner errors (a bit ugly -- see yy_fatal_error) */
 #undef fprintf
 #define fprintf(file, fmt, msg)  fprintf_to_ereport(fmt, msg)
@@ -140,7 +130,7 @@ WAIT				{ return K_WAIT; }
 {space}+		{ /* do nothing */ }
 
 {digit}+		{
-					replication_yylval.uintval = strtoul(yytext, NULL, 10);
+					yylval.uintval = strtoul(yytext, NULL, 10);
 					return UCONST;
 				}
 
@@ -148,8 +138,8 @@ WAIT				{ return K_WAIT; }
 					uint32	hi,
 							lo;
 					if (sscanf(yytext, "%X/%X", &hi, &lo) != 2)
-						replication_yyerror("invalid streaming start location");
-					replication_yylval.recptr = ((uint64) hi) << 32 | lo;
+						yyerror("invalid streaming start location");
+					yylval.recptr = ((uint64) hi) << 32 | lo;
 					return RECPTR;
 				}
 
@@ -161,7 +151,7 @@ WAIT				{ return K_WAIT; }
 <xq>{quotestop}	{
 					yyless(1);
 					BEGIN(INITIAL);
-					replication_yylval.str = litbufdup();
+					yylval.str = litbufdup();
 					return SCONST;
 				}
 
@@ -183,9 +173,9 @@ WAIT				{ return K_WAIT; }
 
 					yyless(1);
 					BEGIN(INITIAL);
-					replication_yylval.str = litbufdup();
-					len = strlen(replication_yylval.str);
-					truncate_identifier(replication_yylval.str, len, true);
+					yylval.str = litbufdup();
+					len = strlen(yylval.str);
+					truncate_identifier(yylval.str, len, true);
 					return IDENT;
 				}
 
@@ -196,7 +186,7 @@ WAIT				{ return K_WAIT; }
 {identifier}	{
 					int			len = strlen(yytext);
 
-					replication_yylval.str = downcase_truncate_identifier(yytext, len, true);
+					yylval.str = downcase_truncate_identifier(yytext, len, true);
 					return IDENT;
 				}
 
@@ -205,7 +195,7 @@ WAIT				{ return K_WAIT; }
 					return yytext[0];
 				}
 
-<xq,xd><<EOF>>	{ replication_yyerror("unterminated quoted string"); }
+<xq,xd><<EOF>>	{ yyerror("unterminated quoted string"); }
 
 
 <<EOF>>			{
@@ -241,7 +231,7 @@ addlitchar(unsigned char ychar)
 }
 
 void
-replication_yyerror(const char *message)
+yyerror(const char *message)
 {
 	ereport(ERROR,
 			(errcode(ERRCODE_SYNTAX_ERROR),

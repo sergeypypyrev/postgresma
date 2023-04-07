@@ -9,7 +9,7 @@
 #   The main Makefile in this directory defers to this helper file when
 #   building the sslfiles-related targets.
 #
-# Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/test/ssl/sslfiles.mk
@@ -33,21 +33,16 @@ SERVERS := server-cn-and-alt-names \
 	server-multiple-alt-names \
 	server-no-names \
 	server-revoked
-CLIENTS := client client-dn client-revoked client_ext client-long \
-	client-revoked-utf8
+CLIENTS := client client-dn client-revoked client_ext
 
 #
-# To add a new non-standard certificate, add it to SPECIAL_CERTS and then add
-# a recipe for creating it to the "Special-case certificates" section below.
+# To add a new non-standard key, add it to SPECIAL_KEYS and then add a recipe
+# for creating it to the "Special-case keys" section below.
 #
-SPECIAL_CERTS := ssl/server-rsapss.crt
-
-# Likewise for non-standard keys
 SPECIAL_KEYS := ssl/server-password.key \
 	ssl/client-der.key \
 	ssl/client-encrypted-pem.key \
-	ssl/client-encrypted-der.key \
-	ssl/server-rsapss.key
+	ssl/client-encrypted-der.key
 
 #
 # These files are just concatenations of other files. You can add new ones to
@@ -70,13 +65,7 @@ CRLS := ssl/root.crl \
 	ssl/client.crl \
 	ssl/server.crl
 
-SSLFILES := \
-	$(STANDARD_CERTS) \
-	$(STANDARD_KEYS) \
-	$(SPECIAL_CERTS) \
-	$(SPECIAL_KEYS) \
-	$(COMBINATIONS) \
-	$(CRLS)
+SSLFILES := $(STANDARD_CERTS) $(STANDARD_KEYS) $(SPECIAL_KEYS) $(COMBINATIONS) $(CRLS)
 SSLDIRS := ssl/client-crldir \
 	ssl/server-crldir \
 	ssl/root+client-crldir \
@@ -94,11 +83,7 @@ sslfiles: $(SSLFILES) $(SSLDIRS)
 
 # Root CA is self-signed.
 ssl/root_ca.crt: ssl/root_ca.key conf/root_ca.config
-	$(OPENSSL) req -new -x509 -config conf/root_ca.config -days 10000 -key $< -out $@
-
-# Certificate using RSA-PSS algorithm. Also self-signed.
-ssl/server-rsapss.crt: ssl/server-rsapss.key conf/server-rsapss.config
-	$(OPENSSL) req -new -x509 -config conf/server-rsapss.config -key $< -out $@
+	openssl req -new -x509 -config conf/root_ca.config -days 10000 -key $< -out $@
 
 #
 # Special-case keys
@@ -108,24 +93,20 @@ ssl/server-rsapss.crt: ssl/server-rsapss.key conf/server-rsapss.config
 
 # Password-protected version of server-cn-only.key
 ssl/server-password.key: ssl/server-cn-only.key
-	$(OPENSSL) rsa -aes256 -in $< -out $@ -passout 'pass:secret1'
-
-# Key that uses the RSA-PSS algorithm
-ssl/server-rsapss.key:
-	$(OPENSSL) genpkey -algorithm rsa-pss -out $@
+	openssl rsa -aes256 -in $< -out $@ -passout 'pass:secret1'
 
 # DER-encoded version of client.key
 ssl/client-der.key: ssl/client.key
-	$(OPENSSL) rsa -in $< -outform DER -out $@
+	openssl rsa -in $< -outform DER -out $@
 
 # Convert client.key to encrypted PEM (X.509 text) and DER (X.509 ASN.1)
 # formats to test libpq's support for the sslpassword= option.
 ssl/client-encrypted-pem.key: ssl/client.key
-	$(OPENSSL) rsa -in $< -outform PEM -aes128 -passout 'pass:dUmmyP^#+' -out $@
+	openssl rsa -in $< -outform PEM -aes128 -passout 'pass:dUmmyP^#+' -out $@
 # TODO Explicitly choosing -aes128 generates a key unusable to PostgreSQL with
 # OpenSSL 3.0.0, so fall back on the default for now.
 ssl/client-encrypted-der.key: ssl/client.key
-	$(OPENSSL) rsa -in $< -outform DER -passout 'pass:dUmmyP^#+' -out $@
+	openssl rsa -in $< -outform DER -passout 'pass:dUmmyP^#+' -out $@
 
 #
 # Combined files
@@ -163,7 +144,7 @@ $(COMBINATIONS):
 #
 
 $(STANDARD_KEYS):
-	$(OPENSSL) genrsa -out $@ 2048
+	openssl genrsa -out $@ 2048
 	chmod 0600 $@
 
 #
@@ -183,18 +164,18 @@ client_ca_state_files := ssl/client_ca-certindex ssl/client_ca-certindex.attr ss
 # parallel processes, so we must mark the entire Makefile .NOTPARALLEL.
 .NOTPARALLEL:
 $(CA_CERTS): ssl/%.crt: ssl/%.csr conf/%.config conf/cas.config ssl/root_ca.crt | ssl/new_certs_dir $(root_ca_state_files)
-	$(OPENSSL) ca -batch -config conf/cas.config -name root_ca   -notext -in $< -out $@
+	openssl ca -batch -config conf/cas.config -name root_ca   -notext -in $< -out $@
 
 $(SERVER_CERTS): ssl/%.crt: ssl/%.csr conf/%.config conf/cas.config ssl/server_ca.crt | ssl/new_certs_dir $(server_ca_state_files)
-	$(OPENSSL) ca -batch -config conf/cas.config -name server_ca -notext -in $< -out $@
+	openssl ca -batch -config conf/cas.config -name server_ca -notext -in $< -out $@
 
 $(CLIENT_CERTS): ssl/%.crt: ssl/%.csr conf/%.config conf/cas.config ssl/client_ca.crt | ssl/new_certs_dir $(client_ca_state_files)
-	$(OPENSSL) ca -batch -config conf/cas.config -name client_ca -notext -in $< -out $@
+	openssl ca -batch -config conf/cas.config -name client_ca -notext -in $< -out $@
 
 # The CSRs don't need to persist after a build.
 .INTERMEDIATE: $(CERTIFICATES:%=ssl/%.csr)
 ssl/%.csr: ssl/%.key conf/%.config
-	$(OPENSSL) req -new -utf8 -key $< -out $@ -config conf/$*.config
+	openssl req -new -key $< -out $@ -config conf/$*.config
 
 #
 # CA State
@@ -228,16 +209,15 @@ ssl/%.srl:
 #
 
 ssl/root.crl: ssl/root_ca.crt | $(root_ca_state_files)
-	$(OPENSSL) ca -config conf/cas.config -name root_ca   -gencrl -out $@
+	openssl ca -config conf/cas.config -name root_ca   -gencrl -out $@
 
 ssl/server.crl: ssl/server-revoked.crt ssl/server_ca.crt | $(server_ca_state_files)
-	$(OPENSSL) ca -config conf/cas.config -name server_ca -revoke $<
-	$(OPENSSL) ca -config conf/cas.config -name server_ca -gencrl -out $@
+	openssl ca -config conf/cas.config -name server_ca -revoke $<
+	openssl ca -config conf/cas.config -name server_ca -gencrl -out $@
 
-ssl/client.crl: ssl/client-revoked.crt ssl/client-revoked-utf8.crt ssl/client_ca.crt | $(client_ca_state_files)
-	$(OPENSSL) ca -config conf/cas.config -name client_ca -revoke ssl/client-revoked.crt
-	$(OPENSSL) ca -config conf/cas.config -name client_ca -revoke ssl/client-revoked-utf8.crt
-	$(OPENSSL) ca -config conf/cas.config -name client_ca -gencrl -out $@
+ssl/client.crl: ssl/client-revoked.crt ssl/client_ca.crt | $(client_ca_state_files)
+	openssl ca -config conf/cas.config -name client_ca -revoke $<
+	openssl ca -config conf/cas.config -name client_ca -gencrl -out $@
 
 #
 # CRL hash directories
@@ -248,7 +228,7 @@ ssl/root+client-crldir: ssl/client.crl ssl/root.crl
 ssl/server-crldir: ssl/server.crl
 ssl/client-crldir: ssl/client.crl
 
-crlhashfile = $(shell $(OPENSSL) crl -hash -noout -in $(1)).r0
+crlhashfile = $(shell openssl crl -hash -noout -in $(1)).r0
 
 ssl/%-crldir:
 	mkdir -p $@

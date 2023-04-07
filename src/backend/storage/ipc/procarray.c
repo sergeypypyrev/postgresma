@@ -34,7 +34,7 @@
  * happen, it would tie up KnownAssignedXids indefinitely, so we protect
  * ourselves by pruning the array when a valid list of running XIDs arrives.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -58,7 +58,6 @@
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
 #include "pgstat.h"
-#include "port/pg_lfind.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/spin.h"
@@ -355,7 +354,7 @@ static bool KnownAssignedXidExists(TransactionId xid);
 static void KnownAssignedXidsRemove(TransactionId xid);
 static void KnownAssignedXidsRemoveTree(TransactionId xid, int nsubxids,
 										TransactionId *subxids);
-static void KnownAssignedXidsRemovePreceding(TransactionId removeXid);
+static void KnownAssignedXidsRemovePreceding(TransactionId xid);
 static int	KnownAssignedXidsGet(TransactionId *xarray, TransactionId xmax);
 static int	KnownAssignedXidsGetAndSetXmin(TransactionId *xarray,
 										   TransactionId *xmin,
@@ -367,9 +366,6 @@ static inline void ProcArrayEndTransactionInternal(PGPROC *proc, TransactionId l
 static void ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid);
 static void MaintainLatestCompletedXid(TransactionId latestXid);
 static void MaintainLatestCompletedXidRecovery(TransactionId latestXid);
-static void TransactionIdRetreatSafely(TransactionId *xid,
-									   int retreat_by,
-									   FullTransactionId rel);
 
 static inline FullTransactionId FullXidRelativeTo(FullTransactionId rel,
 												  TransactionId xid);
@@ -1601,9 +1597,14 @@ TransactionIdIsInProgress(TransactionId xid)
 	 */
 	topxid = SubTransGetTopmostTransaction(xid);
 	Assert(TransactionIdIsValid(topxid));
-	if (!TransactionIdEquals(topxid, xid) &&
-		pg_lfind32(topxid, xids, nxids))
-		return true;
+	if (!TransactionIdEquals(topxid, xid))
+	{
+		for (int i = 0; i < nxids; i++)
+		{
+			if (TransactionIdEquals(xids[i], topxid))
+				return true;
+		}
+	}
 
 	cachedXidIsNotInProgress = xid;
 	return false;
@@ -1891,35 +1892,17 @@ ComputeXidHorizons(ComputeXidHorizonsResult *h)
 		 * so guc.c should limit it to no more than the xidStopLimit threshold
 		 * in varsup.c.  Also note that we intentionally don't apply
 		 * vacuum_defer_cleanup_age on standby servers.
-		 *
-		 * Need to use TransactionIdRetreatSafely() instead of open-coding the
-		 * subtraction, to prevent creating an xid before
-		 * FirstNormalTransactionId.
 		 */
-		Assert(TransactionIdPrecedesOrEquals(h->oldest_considered_running,
-											 h->shared_oldest_nonremovable));
-		Assert(TransactionIdPrecedesOrEquals(h->shared_oldest_nonremovable,
-											 h->data_oldest_nonremovable));
-
-		if (vacuum_defer_cleanup_age > 0)
-		{
-			TransactionIdRetreatSafely(&h->oldest_considered_running,
-									   vacuum_defer_cleanup_age,
-									   h->latest_completed);
-			TransactionIdRetreatSafely(&h->shared_oldest_nonremovable,
-									   vacuum_defer_cleanup_age,
-									   h->latest_completed);
-			TransactionIdRetreatSafely(&h->data_oldest_nonremovable,
-									   vacuum_defer_cleanup_age,
-									   h->latest_completed);
-			/* defer doesn't apply to temp relations */
-
-
-			Assert(TransactionIdPrecedesOrEquals(h->oldest_considered_running,
-												 h->shared_oldest_nonremovable));
-			Assert(TransactionIdPrecedesOrEquals(h->shared_oldest_nonremovable,
-												 h->data_oldest_nonremovable));
-		}
+		h->oldest_considered_running =
+			TransactionIdRetreatedBy(h->oldest_considered_running,
+									 vacuum_defer_cleanup_age);
+		h->shared_oldest_nonremovable =
+			TransactionIdRetreatedBy(h->shared_oldest_nonremovable,
+									 vacuum_defer_cleanup_age);
+		h->data_oldest_nonremovable =
+			TransactionIdRetreatedBy(h->data_oldest_nonremovable,
+									 vacuum_defer_cleanup_age);
+		/* defer doesn't apply to temp relations */
 	}
 
 	/*
@@ -2415,7 +2398,7 @@ GetSnapshotData(Snapshot snapshot)
 						pg_read_barrier();	/* pairs with GetNewTransactionId */
 
 						memcpy(snapshot->subxip + subcount,
-							   proc->subxids.xids,
+							   (void *) proc->subxids.xids,
 							   nsubxids * sizeof(TransactionId));
 						subcount += nsubxids;
 					}
@@ -2441,7 +2424,7 @@ GetSnapshotData(Snapshot snapshot)
 		 * We could try to store xids into xip[] first and then into subxip[]
 		 * if there are too many xids. That only works if the snapshot doesn't
 		 * overflow because we do not search subxip[] in that case. A simpler
-		 * way is to just store all xids in the subxip array because this is
+		 * way is to just store all xids in the subxact array because this is
 		 * by far the bigger array. We just leave the xip array empty.
 		 *
 		 * Either way we need to change the way XidInMVCCSnapshot() works
@@ -2491,10 +2474,8 @@ GetSnapshotData(Snapshot snapshot)
 		oldestfxid = FullXidRelativeTo(latest_completed, oldestxid);
 
 		/* apply vacuum_defer_cleanup_age */
-		def_vis_xid_data = xmin;
-		TransactionIdRetreatSafely(&def_vis_xid_data,
-								   vacuum_defer_cleanup_age,
-								   oldestfxid);
+		def_vis_xid_data =
+			TransactionIdRetreatedBy(xmin, vacuum_defer_cleanup_age);
 
 		/* Check whether there's a replication slot requiring an older xmin. */
 		def_vis_xid_data =
@@ -2869,7 +2850,7 @@ GetRunningTransactionData(void)
 				/* barrier not really required, as XidGenLock is held, but ... */
 				pg_read_barrier();	/* pairs with GetNewTransactionId */
 
-				memcpy(&xids[count], proc->subxids.xids,
+				memcpy(&xids[count], (void *) proc->subxids.xids,
 					   nsubxids * sizeof(TransactionId));
 				count += nsubxids;
 				subcount += nsubxids;
@@ -3371,17 +3352,12 @@ GetCurrentVirtualXIDs(TransactionId limitXmin, bool excludeXmin0,
  * GetConflictingVirtualXIDs -- returns an array of currently active VXIDs.
  *
  * Usage is limited to conflict resolution during recovery on standby servers.
- * limitXmin is supplied as either a cutoff with snapshotConflictHorizon
- * semantics, or InvalidTransactionId in cases where caller cannot accurately
- * determine a safe snapshotConflictHorizon value.
+ * limitXmin is supplied as either latestRemovedXid, or InvalidTransactionId
+ * in cases where we cannot accurately determine a value for latestRemovedXid.
  *
  * If limitXmin is InvalidTransactionId then we want to kill everybody,
  * so we're not worried if they have a snapshot or not, nor does it really
- * matter what type of lock we hold.  Caller must avoid calling here with
- * snapshotConflictHorizon style cutoffs that were set to InvalidTransactionId
- * during original execution, since that actually indicates that there is
- * definitely no need for a recovery conflict (the snapshotConflictHorizon
- * convention for InvalidTransactionId values is the opposite of our own!).
+ * matter what type of lock we hold.
  *
  * All callers that are checking xmins always now supply a valid and useful
  * value for limitXmin. The limitXmin is always lower than the lowest
@@ -3883,9 +3859,7 @@ TerminateOtherDBBackends(Oid databaseId)
 					!has_privs_of_role(GetUserId(), ROLE_PG_SIGNAL_BACKEND))
 					ereport(ERROR,
 							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-							 errmsg("permission denied to terminate process"),
-							 errdetail("Only roles with privileges of the role whose process is being terminated or with privileges of the \"%s\" role may terminate this process.",
-									   "pg_signal_backend")));
+							 errmsg("must be a member of the role whose process is being terminated or member of pg_signal_backend")));
 			}
 		}
 
@@ -4252,8 +4226,8 @@ GlobalVisTestIsRemovableXid(GlobalVisState *state, TransactionId xid)
 	/*
 	 * Convert 32 bit argument to FullTransactionId. We can do so safely
 	 * because we know the xid has to, at the very least, be between
-	 * [oldestXid, nextXid), i.e. within 2 billion of xid. To avoid taking a
-	 * lock to determine either, we can just compare with
+	 * [oldestXid, nextFullXid), i.e. within 2 billion of xid. To avoid taking
+	 * a lock to determine either, we can just compare with
 	 * state->definitely_needed, which was based on those value at the time
 	 * the current snapshot was built.
 	 */
@@ -4318,44 +4292,6 @@ GlobalVisCheckRemovableXid(Relation rel, TransactionId xid)
 	state = GlobalVisTestFor(rel);
 
 	return GlobalVisTestIsRemovableXid(state, xid);
-}
-
-/*
- * Safely retract *xid by retreat_by, store the result in *xid.
- *
- * Need to be careful to prevent *xid from retreating below
- * FirstNormalTransactionId during epoch 0. This is important to prevent
- * generating xids that cannot be converted to a FullTransactionId without
- * wrapping around.
- *
- * If retreat_by would lead to a too old xid, FirstNormalTransactionId is
- * returned instead.
- */
-static void
-TransactionIdRetreatSafely(TransactionId *xid, int retreat_by, FullTransactionId rel)
-{
-	TransactionId original_xid = *xid;
-	FullTransactionId fxid;
-	uint64		fxid_i;
-
-	Assert(TransactionIdIsNormal(original_xid));
-	Assert(retreat_by >= 0);	/* relevant GUCs are stored as ints */
-	AssertTransactionIdInAllowableRange(original_xid);
-
-	if (retreat_by == 0)
-		return;
-
-	fxid = FullXidRelativeTo(rel, original_xid);
-	fxid_i = U64FromFullTransactionId(fxid);
-
-	if ((fxid_i - FirstNormalTransactionId) <= retreat_by)
-		*xid = FirstNormalTransactionId;
-	else
-	{
-		*xid = TransactionIdRetreatedBy(original_xid, retreat_by);
-		Assert(TransactionIdIsNormal(*xid));
-		Assert(NormalTransactionIdPrecedes(*xid, original_xid));
-	}
 }
 
 /*

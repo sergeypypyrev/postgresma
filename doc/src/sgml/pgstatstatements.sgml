@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/pgstatstatements.sgml -->
 
 <sect1 id="pgstatstatements" xreflabel="pg_stat_statements">
- <title>pg_stat_statements &mdash; track statistics of SQL planning and execution</title>
+ <title>pg_stat_statements</title>
 
  <indexterm zone="pgstatstatements">
   <primary>pg_stat_statements</primary>
@@ -36,7 +36,7 @@
    <command>CREATE EXTENSION pg_stat_statements</command>.
  </para>
 
- <sect2 id="pgstatstatements-pg-stat-statements">
+ <sect2>
   <title>The <structname>pg_stat_statements</structname> View</title>
 
   <para>
@@ -487,13 +487,13 @@
 
   <para>
    Plannable queries (that is, <command>SELECT</command>, <command>INSERT</command>,
-   <command>UPDATE</command>, <command>DELETE</command>, and <command>MERGE</command>)
-   and utility commands are combined into a single
+   <command>UPDATE</command>, <command>DELETE</command>, and <command>MERGE</command>) are combined into a single
    <structname>pg_stat_statements</structname> entry whenever they have identical query
    structures according to an internal hash calculation.  Typically, two
    queries will be considered the same for this purpose if they are
    semantically equivalent except for the values of literal constants
-   appearing in the query.
+   appearing in the query.  Utility commands (that is, all other commands)
+   are compared strictly on the basis of their textual query strings, however.
   </para>
 
   <note>
@@ -514,16 +514,6 @@
    The rest of the query text is that of the first query that had the
    particular <structfield>queryid</structfield> hash value associated with the
    <structname>pg_stat_statements</structname> entry.
-  </para>
-
-  <para>
-   Queries on which normalization can be applied may be observed with constant
-   values in <structname>pg_stat_statements</structname>, especially when there
-   is a high rate of entry deallocations. To reduce the likelihood of this
-   happening, consider increasing <varname>pg_stat_statements.max</varname>.
-   The <structname>pg_stat_statements_info</structname> view, discussed below
-   in <xref linkend="pgstatstatements-pg-stat-statements-info"/>,
-   provides statistics about entry deallocations.
   </para>
 
   <para>
@@ -612,7 +602,7 @@
   </para>
  </sect2>
 
- <sect2 id="pgstatstatements-pg-stat-statements-info">
+ <sect2>
   <title>The <structname>pg_stat_statements_info</structname> View</title>
 
   <indexterm>
@@ -668,7 +658,7 @@
   </table>
  </sect2>
 
- <sect2 id="pgstatstatements-funcs">
+ <sect2>
   <title>Functions</title>
 
   <variablelist>
@@ -731,7 +721,7 @@
   </variablelist>
  </sect2>
 
- <sect2 id="pgstatstatements-config-params">
+ <sect2>
   <title>Configuration Parameters</title>
 
   <variablelist>
@@ -866,7 +856,7 @@ pg_stat_statements.track = all
   </para>
  </sect2>
 
- <sect2 id="pgstatstatements-sample-output">
+ <sect2>
   <title>Sample Output</title>
 
 <screen>
@@ -971,7 +961,7 @@ hit_percent     |
 </screen>
  </sect2>
 
- <sect2 id="pgstatstatements-authors">
+ <sect2>
   <title>Authors</title>
 
   <para>

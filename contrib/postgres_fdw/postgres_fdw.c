@@ -3,7 +3,7 @@
  * postgres_fdw.c
  *		  Foreign-data wrapper for remote PostgreSQL servers
  *
- * Portions Copyright (c) 2012-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/postgres_fdw/postgres_fdw.c
@@ -458,7 +458,7 @@ static PgFdwModifyState *create_foreign_modify(EState *estate,
 											   Plan *subplan,
 											   char *query,
 											   List *target_attrs,
-											   int values_end,
+											   int len,
 											   bool has_returning,
 											   List *retrieved_attrs);
 static TupleTableSlot **execute_foreign_modify(EState *estate,
@@ -625,6 +625,7 @@ postgresGetForeignRelSize(PlannerInfo *root,
 {
 	PgFdwRelationInfo *fpinfo;
 	ListCell   *lc;
+	RangeTblEntry *rte = planner_rt_fetch(baserel->relid, root);
 
 	/*
 	 * We use PgFdwRelationInfo to pass various information to subsequent
@@ -658,14 +659,13 @@ postgresGetForeignRelSize(PlannerInfo *root,
 	/*
 	 * If the table or the server is configured to use remote estimates,
 	 * identify which user to do remote access as during planning.  This
-	 * should match what ExecCheckPermissions() does.  If we fail due to lack
-	 * of permissions, the query would have failed at runtime anyway.
+	 * should match what ExecCheckRTEPerms() does.  If we fail due to lack of
+	 * permissions, the query would have failed at runtime anyway.
 	 */
 	if (fpinfo->use_remote_estimate)
 	{
-		Oid			userid;
+		Oid			userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
 
-		userid = OidIsValid(baserel->userid) ? baserel->userid : GetUserId();
 		fpinfo->user = GetUserMapping(userid, fpinfo->server->serverid);
 	}
 	else
@@ -1342,6 +1342,8 @@ postgresGetForeignPlan(PlannerInfo *root,
 		 */
 		if (outer_plan)
 		{
+			ListCell   *lc;
+
 			/*
 			 * Right now, we only consider grouping and aggregation beyond
 			 * joins. Queries involving aggregates or grouping do not require
@@ -1511,14 +1513,16 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 
 	/*
 	 * Identify which user to do the remote access as.  This should match what
-	 * ExecCheckPermissions() does.
+	 * ExecCheckRTEPerms() does.  In case of a join or aggregate, use the
+	 * lowest-numbered member RTE as a representative; we would get the same
+	 * result from any.
 	 */
-	userid = OidIsValid(fsplan->checkAsUser) ? fsplan->checkAsUser : GetUserId();
 	if (fsplan->scan.scanrelid > 0)
 		rtindex = fsplan->scan.scanrelid;
 	else
-		rtindex = bms_next_member(fsplan->fs_base_relids, -1);
+		rtindex = bms_next_member(fsplan->fs_relids, -1);
 	rte = exec_rt_fetch(rtindex, estate);
+	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
 
 	/* Get info about foreign table. */
 	table = GetForeignTable(rte->relid);
@@ -1646,7 +1650,7 @@ postgresReScanForeignScan(ForeignScanState *node)
 		return;
 
 	/*
-	 * If the node is async-capable, and an asynchronous fetch for it has
+	 * If the node is async-capable, and an asynchronous fetch for it has been
 	 * begun, the asynchronous fetch might not have yet completed.  Check if
 	 * the node is async-capable, and an asynchronous fetch for it is still in
 	 * progress; if so, complete the asynchronous fetch before restarting the
@@ -2017,16 +2021,16 @@ static int
 postgresGetForeignModifyBatchSize(ResultRelInfo *resultRelInfo)
 {
 	int			batch_size;
-	PgFdwModifyState *fmstate = (PgFdwModifyState *) resultRelInfo->ri_FdwState;
+	PgFdwModifyState *fmstate = resultRelInfo->ri_FdwState ?
+	(PgFdwModifyState *) resultRelInfo->ri_FdwState :
+	NULL;
 
 	/* should be called only once */
 	Assert(resultRelInfo->ri_BatchSize == 0);
 
 	/*
-	 * Should never get called when the insert is being performed on a table
-	 * that is also among the target relations of an UPDATE operation,
-	 * because postgresBeginForeignInsert() currently rejects such insert
-	 * attempts.
+	 * Should never get called when the insert is being performed as part of a
+	 * row movement operation.
 	 */
 	Assert(fmstate == NULL || fmstate->aux_fmstate == NULL);
 
@@ -2055,15 +2059,6 @@ postgresGetForeignModifyBatchSize(ResultRelInfo *resultRelInfo)
 		(resultRelInfo->ri_TrigDesc &&
 		 (resultRelInfo->ri_TrigDesc->trig_insert_before_row ||
 		  resultRelInfo->ri_TrigDesc->trig_insert_after_row)))
-		return 1;
-
-	/*
-	 * If the foreign table has no columns, disable batching as the INSERT
-	 * syntax doesn't allow batching multiple empty rows into a zero-column
-	 * table in a single statement.  This is needed for COPY FROM, in which
-	 * case fmstate must be non-NULL.
-	 */
-	if (fmstate && list_length(fmstate->target_attrs) == 0)
 		return 1;
 
 	/*
@@ -2414,7 +2409,7 @@ find_modifytable_subplan(PlannerInfo *root,
 	{
 		ForeignScan *fscan = (ForeignScan *) subplan;
 
-		if (bms_is_member(rtindex, fscan->fs_base_relids))
+		if (bms_is_member(rtindex, fscan->fs_relids))
 			return fscan;
 	}
 
@@ -2633,6 +2628,7 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 	EState	   *estate = node->ss.ps.state;
 	PgFdwDirectModifyState *dmstate;
 	Index		rtindex;
+	RangeTblEntry *rte;
 	Oid			userid;
 	ForeignTable *table;
 	UserMapping *user;
@@ -2652,12 +2648,13 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 
 	/*
 	 * Identify which user to do the remote access as.  This should match what
-	 * ExecCheckPermissions() does.
+	 * ExecCheckRTEPerms() does.
 	 */
-	userid = OidIsValid(fsplan->checkAsUser) ? fsplan->checkAsUser : GetUserId();
+	rtindex = node->resultRelInfo->ri_RangeTableIndex;
+	rte = exec_rt_fetch(rtindex, estate);
+	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
 
 	/* Get info about foreign table. */
-	rtindex = node->resultRelInfo->ri_RangeTableIndex;
 	if (fsplan->scan.scanrelid == 0)
 		dmstate->rel = ExecOpenScanRelation(estate, rtindex, eflags);
 	else
@@ -2797,7 +2794,8 @@ postgresEndDirectModify(ForeignScanState *node)
 		return;
 
 	/* Release PGresult */
-	PQclear(dmstate->result);
+	if (dmstate->result)
+		PQclear(dmstate->result);
 
 	/* Release remote connection */
 	ReleaseConnection(dmstate->conn);
@@ -2838,8 +2836,8 @@ postgresExplainForeignScan(ForeignScanState *node, ExplainState *es)
 		 * that setrefs.c won't update the string when flattening the
 		 * rangetable.  To find out what rtoffset was applied, identify the
 		 * minimum RT index appearing in the string and compare it to the
-		 * minimum member of plan->fs_base_relids.  (We expect all the relids
-		 * in the join will have been offset by the same amount; the Asserts
+		 * minimum member of plan->fs_relids.  (We expect all the relids in
+		 * the join will have been offset by the same amount; the Asserts
 		 * below should catch it if that ever changes.)
 		 */
 		minrti = INT_MAX;
@@ -2856,7 +2854,7 @@ postgresExplainForeignScan(ForeignScanState *node, ExplainState *es)
 			else
 				ptr++;
 		}
-		rtoffset = bms_next_member(plan->fs_base_relids, -1) - minrti;
+		rtoffset = bms_next_member(plan->fs_relids, -1) - minrti;
 
 		/* Now we can translate the string */
 		relations = makeStringInfo();
@@ -2871,7 +2869,7 @@ postgresExplainForeignScan(ForeignScanState *node, ExplainState *es)
 				char	   *refname;
 
 				rti += rtoffset;
-				Assert(bms_is_member(rti, plan->fs_base_relids));
+				Assert(bms_is_member(rti, plan->fs_relids));
 				rte = rt_fetch(rti, es->rtable);
 				Assert(rte->rtekind == RTE_RELATION);
 				/* This logic should agree with explain.c's ExplainTargetRel */
@@ -3345,9 +3343,9 @@ estimate_path_cost_size(PlannerInfo *root,
 			}
 
 			/* Get number of grouping columns and possible number of groups */
-			numGroupCols = list_length(root->processed_groupClause);
+			numGroupCols = list_length(root->parse->groupClause);
 			numGroups = estimate_num_groups(root,
-											get_sortgrouplist_exprs(root->processed_groupClause,
+											get_sortgrouplist_exprs(root->parse->groupClause,
 																	fpinfo->grouped_tlist),
 											input_rows, NULL, NULL);
 
@@ -3355,7 +3353,7 @@ estimate_path_cost_size(PlannerInfo *root,
 			 * Get the retrieved_rows and rows estimates.  If there are HAVING
 			 * quals, account for their selectivity.
 			 */
-			if (root->hasHavingQual)
+			if (root->parse->havingQual)
 			{
 				/* Factor in the selectivity of the remotely-checked quals */
 				retrieved_rows =
@@ -3403,7 +3401,7 @@ estimate_path_cost_size(PlannerInfo *root,
 			run_cost += cpu_tuple_cost * numGroups;
 
 			/* Account for the eval cost of HAVING quals, if any */
-			if (root->hasHavingQual)
+			if (root->parse->havingQual)
 			{
 				QualCost	remote_cost;
 
@@ -3610,7 +3608,8 @@ get_remote_estimate(const char *sql, PGconn *conn,
 	}
 	PG_FINALLY();
 	{
-		PQclear(res);
+		if (res)
+			PQclear(res);
 	}
 	PG_END_TRY();
 }
@@ -3636,7 +3635,7 @@ adjust_foreign_grouping_path_cost(PlannerInfo *root,
 	 * pathkeys, adjust the costs with that function.  Otherwise, adjust the
 	 * costs by applying the same heuristic as for the scan or join case.
 	 */
-	if (!grouping_is_sortable(root->processed_groupClause) ||
+	if (!grouping_is_sortable(root->parse->groupClause) ||
 		!pathkeys_contained_in(pathkeys, root->group_pathkeys))
 	{
 		Path		sort_path;	/* dummy for result of cost_sort */
@@ -3858,7 +3857,8 @@ fetch_more_data(ForeignScanState *node)
 	}
 	PG_FINALLY();
 	{
-		PQclear(res);
+		if (res)
+			PQclear(res);
 	}
 	PG_END_TRY();
 
@@ -3977,8 +3977,11 @@ create_foreign_modify(EState *estate,
 	fmstate = (PgFdwModifyState *) palloc0(sizeof(PgFdwModifyState));
 	fmstate->rel = rel;
 
-	/* Identify which user to do the remote access as. */
-	userid = ExecGetResultRelCheckAsUser(resultRelInfo, estate);
+	/*
+	 * Identify which user to do the remote access as.  This should match what
+	 * ExecCheckRTEPerms() does.
+	 */
+	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
 
 	/* Get info about foreign table. */
 	table = GetForeignTable(RelationGetRelid(rel));
@@ -4347,7 +4350,8 @@ store_returning_result(PgFdwModifyState *fmstate,
 	}
 	PG_CATCH();
 	{
-		PQclear(res);
+		if (res)
+			PQclear(res);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -4635,7 +4639,8 @@ get_returning_data(ForeignScanState *node)
 		}
 		PG_CATCH();
 		{
-			PQclear(dmstate->result);
+			if (dmstate->result)
+				PQclear(dmstate->result);
 			PG_RE_THROW();
 		}
 		PG_END_TRY();
@@ -4964,7 +4969,8 @@ postgresAnalyzeForeignTable(Relation relation,
 	}
 	PG_FINALLY();
 	{
-		PQclear(res);
+		if (res)
+			PQclear(res);
 	}
 	PG_END_TRY();
 
@@ -4974,71 +4980,9 @@ postgresAnalyzeForeignTable(Relation relation,
 }
 
 /*
- * postgresGetAnalyzeInfoForForeignTable
- *		Count tuples in foreign table (just get pg_class.reltuples).
- *
- * can_tablesample determines if the remote relation supports acquiring the
- * sample using TABLESAMPLE.
- */
-static double
-postgresGetAnalyzeInfoForForeignTable(Relation relation, bool *can_tablesample)
-{
-	ForeignTable *table;
-	UserMapping *user;
-	PGconn	   *conn;
-	StringInfoData sql;
-	PGresult   *volatile res = NULL;
-	volatile double reltuples = -1;
-	volatile char relkind = 0;
-
-	/* assume the remote relation does not support TABLESAMPLE */
-	*can_tablesample = false;
-
-	/*
-	 * Get the connection to use.  We do the remote access as the table's
-	 * owner, even if the ANALYZE was started by some other user.
-	 */
-	table = GetForeignTable(RelationGetRelid(relation));
-	user = GetUserMapping(relation->rd_rel->relowner, table->serverid);
-	conn = GetConnection(user, false, NULL);
-
-	/*
-	 * Construct command to get page count for relation.
-	 */
-	initStringInfo(&sql);
-	deparseAnalyzeInfoSql(&sql, relation);
-
-	/* In what follows, do not risk leaking any PGresults. */
-	PG_TRY();
-	{
-		res = pgfdw_exec_query(conn, sql.data, NULL);
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-			pgfdw_report_error(ERROR, res, conn, false, sql.data);
-
-		if (PQntuples(res) != 1 || PQnfields(res) != 2)
-			elog(ERROR, "unexpected result from deparseAnalyzeTuplesSql query");
-		reltuples = strtod(PQgetvalue(res, 0, 0), NULL);
-		relkind = *(PQgetvalue(res, 0, 1));
-	}
-	PG_FINALLY();
-	{
-		if (res)
-			PQclear(res);
-	}
-	PG_END_TRY();
-
-	ReleaseConnection(conn);
-
-	/* TABLESAMPLE is supported only for regular tables and matviews */
-	*can_tablesample = (relkind == RELKIND_RELATION ||
-						relkind == RELKIND_MATVIEW ||
-						relkind == RELKIND_PARTITIONED_TABLE);
-
-	return reltuples;
-}
-
-/*
  * Acquire a random sample of rows from foreign table managed by postgres_fdw.
+ *
+ * We fetch the whole table from the remote side and pick out some sample rows.
  *
  * Selected rows are returned in the caller-allocated array rows[],
  * which must have at least targrows entries.
@@ -5062,14 +5006,9 @@ postgresAcquireSampleRowsFunc(Relation relation, int elevel,
 	ForeignServer *server;
 	UserMapping *user;
 	PGconn	   *conn;
-	int			server_version_num;
-	PgFdwSamplingMethod method = ANALYZE_SAMPLE_AUTO;	/* auto is default */
-	double		sample_frac = -1.0;
-	double		reltuples;
 	unsigned int cursor_number;
 	StringInfoData sql;
 	PGresult   *volatile res = NULL;
-	ListCell   *lc;
 
 	/* Initialize workspace state */
 	astate.rel = relation;
@@ -5097,159 +5036,20 @@ postgresAcquireSampleRowsFunc(Relation relation, int elevel,
 	user = GetUserMapping(relation->rd_rel->relowner, table->serverid);
 	conn = GetConnection(user, false, NULL);
 
-	/* We'll need server version, so fetch it now. */
-	server_version_num = PQserverVersion(conn);
-
-	/*
-	 * What sampling method should we use?
-	 */
-	foreach(lc, server->options)
-	{
-		DefElem    *def = (DefElem *) lfirst(lc);
-
-		if (strcmp(def->defname, "analyze_sampling") == 0)
-		{
-			char	   *value = defGetString(def);
-
-			if (strcmp(value, "off") == 0)
-				method = ANALYZE_SAMPLE_OFF;
-			else if (strcmp(value, "auto") == 0)
-				method = ANALYZE_SAMPLE_AUTO;
-			else if (strcmp(value, "random") == 0)
-				method = ANALYZE_SAMPLE_RANDOM;
-			else if (strcmp(value, "system") == 0)
-				method = ANALYZE_SAMPLE_SYSTEM;
-			else if (strcmp(value, "bernoulli") == 0)
-				method = ANALYZE_SAMPLE_BERNOULLI;
-
-			break;
-		}
-	}
-
-	foreach(lc, table->options)
-	{
-		DefElem    *def = (DefElem *) lfirst(lc);
-
-		if (strcmp(def->defname, "analyze_sampling") == 0)
-		{
-			char	   *value = defGetString(def);
-
-			if (strcmp(value, "off") == 0)
-				method = ANALYZE_SAMPLE_OFF;
-			else if (strcmp(value, "auto") == 0)
-				method = ANALYZE_SAMPLE_AUTO;
-			else if (strcmp(value, "random") == 0)
-				method = ANALYZE_SAMPLE_RANDOM;
-			else if (strcmp(value, "system") == 0)
-				method = ANALYZE_SAMPLE_SYSTEM;
-			else if (strcmp(value, "bernoulli") == 0)
-				method = ANALYZE_SAMPLE_BERNOULLI;
-
-			break;
-		}
-	}
-
-	/*
-	 * Error-out if explicitly required one of the TABLESAMPLE methods, but
-	 * the server does not support it.
-	 */
-	if ((server_version_num < 95000) &&
-		(method == ANALYZE_SAMPLE_SYSTEM ||
-		 method == ANALYZE_SAMPLE_BERNOULLI))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("remote server does not support TABLESAMPLE feature")));
-
-	/*
-	 * If we've decided to do remote sampling, calculate the sampling rate. We
-	 * need to get the number of tuples from the remote server, but skip that
-	 * network round-trip if not needed.
-	 */
-	if (method != ANALYZE_SAMPLE_OFF)
-	{
-		bool	can_tablesample;
-
-		reltuples = postgresGetAnalyzeInfoForForeignTable(relation,
-														  &can_tablesample);
-
-		/*
-		 * Make sure we're not choosing TABLESAMPLE when the remote relation does
-		 * not support that. But only do this for "auto" - if the user explicitly
-		 * requested BERNOULLI/SYSTEM, it's better to fail.
-		 */
-		if (!can_tablesample && (method == ANALYZE_SAMPLE_AUTO))
-			method = ANALYZE_SAMPLE_RANDOM;
-
-		/*
-		 * Remote's reltuples could be 0 or -1 if the table has never been
-		 * vacuumed/analyzed.  In that case, disable sampling after all.
-		 */
-		if ((reltuples <= 0) || (targrows >= reltuples))
-			method = ANALYZE_SAMPLE_OFF;
-		else
-		{
-			/*
-			 * All supported sampling methods require sampling rate,
-			 * not target rows directly, so we calculate that using
-			 * the remote reltuples value. That's imperfect, because
-			 * it might be off a good deal, but that's not something
-			 * we can (or should) address here.
-			 *
-			 * If reltuples is too low (i.e. when table grew), we'll
-			 * end up sampling more rows - but then we'll apply the
-			 * local sampling, so we get the expected sample size.
-			 * This is the same outcome as without remote sampling.
-			 *
-			 * If reltuples is too high (e.g. after bulk DELETE), we
-			 * will end up sampling too few rows.
-			 *
-			 * We can't really do much better here - we could try
-			 * sampling a bit more rows, but we don't know how off
-			 * the reltuples value is so how much is "a bit more"?
-			 *
-			 * Furthermore, the targrows value for partitions is
-			 * determined based on table size (relpages), which can
-			 * be off in different ways too. Adjusting the sampling
-			 * rate here might make the issue worse.
-			 */
-			sample_frac = targrows / reltuples;
-
-			/*
-			 * We should never get sampling rate outside the valid range
-			 * (between 0.0 and 1.0), because those cases should be covered
-			 * by the previous branch that sets ANALYZE_SAMPLE_OFF.
-			 */
-			Assert(sample_frac >= 0.0 && sample_frac <= 1.0);
-		}
-	}
-
-	/*
-	 * For "auto" method, pick the one we believe is best. For servers with
-	 * TABLESAMPLE support we pick BERNOULLI, for old servers we fall-back to
-	 * random() to at least reduce network transfer.
-	 */
-	if (method == ANALYZE_SAMPLE_AUTO)
-	{
-		if (server_version_num < 95000)
-			method = ANALYZE_SAMPLE_RANDOM;
-		else
-			method = ANALYZE_SAMPLE_BERNOULLI;
-	}
-
 	/*
 	 * Construct cursor that retrieves whole rows from remote.
 	 */
 	cursor_number = GetCursorNumber(conn);
 	initStringInfo(&sql);
 	appendStringInfo(&sql, "DECLARE c%u CURSOR FOR ", cursor_number);
-
-	deparseAnalyzeSql(&sql, relation, method, sample_frac, &astate.retrieved_attrs);
+	deparseAnalyzeSql(&sql, relation, &astate.retrieved_attrs);
 
 	/* In what follows, do not risk leaking any PGresults. */
 	PG_TRY();
 	{
 		char		fetch_sql[64];
 		int			fetch_size;
+		ListCell   *lc;
 
 		res = pgfdw_exec_query(conn, sql.data, NULL);
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
@@ -5326,7 +5126,8 @@ postgresAcquireSampleRowsFunc(Relation relation, int elevel,
 	}
 	PG_CATCH();
 	{
-		PQclear(res);
+		if (res)
+			PQclear(res);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -5336,15 +5137,8 @@ postgresAcquireSampleRowsFunc(Relation relation, int elevel,
 	/* We assume that we have no dead tuple. */
 	*totaldeadrows = 0.0;
 
-	/*
-	 * Without sampling, we've retrieved all living tuples from foreign
-	 * server, so report that as totalrows.  Otherwise use the reltuples
-	 * estimate we got from the remote side.
-	 */
-	if (method == ANALYZE_SAMPLE_OFF)
-		*totalrows = astate.samplerows;
-	else
-		*totalrows = reltuples;
+	/* We've retrieved all living tuples from foreign server. */
+	*totalrows = astate.samplerows;
 
 	/*
 	 * Emit some interesting relation info
@@ -5352,7 +5146,7 @@ postgresAcquireSampleRowsFunc(Relation relation, int elevel,
 	ereport(elevel,
 			(errmsg("\"%s\": table contains %.0f rows, %d rows in sample",
 					RelationGetRelationName(relation),
-					*totalrows, astate.numrows)));
+					astate.samplerows, astate.numrows)));
 
 	return astate.numrows;
 }
@@ -5714,7 +5508,8 @@ postgresImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	}
 	PG_FINALLY();
 	{
-		PQclear(res);
+		if (res)
+			PQclear(res);
 	}
 	PG_END_TRY();
 
@@ -6415,11 +6210,7 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 		Index		sgref = get_pathtarget_sortgroupref(grouping_target, i);
 		ListCell   *l;
 
-		/*
-		 * Check whether this expression is part of GROUP BY clause.  Note we
-		 * check the whole GROUP BY clause not just processed_groupClause,
-		 * because we will ship all of it, cf. appendGroupByClause.
-		 */
+		/* Check whether this expression is part of GROUP BY clause */
 		if (sgref && get_sortgroupref_clause_noerr(sgref, query->groupClause))
 		{
 			TargetEntry *tle;
@@ -6491,10 +6282,10 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 				 */
 				foreach(l, aggvars)
 				{
-					Expr	   *aggref = (Expr *) lfirst(l);
+					Expr	   *expr = (Expr *) lfirst(l);
 
-					if (IsA(aggref, Aggref))
-						tlist = add_to_flat_tlist(tlist, list_make1(aggref));
+					if (IsA(expr, Aggref))
+						tlist = add_to_flat_tlist(tlist, list_make1(expr));
 				}
 			}
 		}
@@ -6508,6 +6299,8 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 	 */
 	if (havingQual)
 	{
+		ListCell   *lc;
+
 		foreach(lc, (List *) havingQual)
 		{
 			Expr	   *expr = (Expr *) lfirst(lc);
@@ -6522,8 +6315,10 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 									  expr,
 									  true,
 									  false,
+									  false,
 									  root->qual_security_level,
 									  grouped_rel->relids,
+									  NULL,
 									  NULL);
 			if (is_foreign_expr(root, grouped_rel, expr))
 				fpinfo->remote_conds = lappend(fpinfo->remote_conds, rinfo);
@@ -6539,6 +6334,7 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 	if (fpinfo->local_conds)
 	{
 		List	   *aggvars = NIL;
+		ListCell   *lc;
 
 		foreach(lc, fpinfo->local_conds)
 		{

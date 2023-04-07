@@ -6,7 +6,7 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/test/regress/regress.c
@@ -39,7 +39,6 @@
 #include "parser/parse_coerce.h"
 #include "port/atomics.h"
 #include "storage/spin.h"
-#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/geo_decls.h"
 #include "utils/lsyscache.h"
@@ -57,22 +56,22 @@
 
 #define EXPECT_EQ_U32(result_expr, expected_expr)	\
 	do { \
-		uint32		actual_result = (result_expr); \
-		uint32		expected_result = (expected_expr); \
-		if (actual_result != expected_result) \
+		uint32		result = (result_expr); \
+		uint32		expected = (expected_expr); \
+		if (result != expected) \
 			elog(ERROR, \
 				 "%s yielded %u, expected %s in file \"%s\" line %u", \
-				 #result_expr, actual_result, #expected_expr, __FILE__, __LINE__); \
+				 #result_expr, result, #expected_expr, __FILE__, __LINE__); \
 	} while (0)
 
 #define EXPECT_EQ_U64(result_expr, expected_expr)	\
 	do { \
-		uint64		actual_result = (result_expr); \
-		uint64		expected_result = (expected_expr); \
-		if (actual_result != expected_result) \
+		uint64		result = (result_expr); \
+		uint64		expected = (expected_expr); \
+		if (result != expected) \
 			elog(ERROR, \
 				 "%s yielded " UINT64_FORMAT ", expected %s in file \"%s\" line %u", \
-				 #result_expr, actual_result, #expected_expr, __FILE__, __LINE__); \
+				 #result_expr, result, #expected_expr, __FILE__, __LINE__); \
 	} while (0)
 
 #define LDELIM			'('
@@ -183,11 +182,6 @@ widget_in(PG_FUNCTION_ARGS)
 			coord[i++] = p + 1;
 	}
 
-	/*
-	 * Note: DON'T convert this error to "soft" style (errsave/ereturn).  We
-	 * want this data type to stay permanently in the hard-error world so that
-	 * it can be used for testing that such cases still work reasonably.
-	 */
 	if (i < NARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
@@ -1116,7 +1110,7 @@ test_enc_conversion(PG_FUNCTION_ARGS)
 	int			convertedbytes;
 	int			dstlen;
 	Datum		values[2];
-	bool		nulls[2] = {0};
+	bool		nulls[2];
 	HeapTuple	tuple;
 
 	if (src_encoding < 0)
@@ -1205,6 +1199,7 @@ test_enc_conversion(PG_FUNCTION_ARGS)
 		pfree(dst);
 	}
 
+	MemSet(nulls, 0, sizeof(nulls));
 	values[0] = Int32GetDatum(convertedbytes);
 	values[1] = PointerGetDatum(retval);
 	tuple = heap_form_tuple(tupdesc, values, nulls);

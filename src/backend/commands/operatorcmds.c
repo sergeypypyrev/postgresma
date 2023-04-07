@@ -4,7 +4,7 @@
  *
  *	  Routines for operator manipulation commands
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -36,9 +36,7 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
-#include "catalog/pg_namespace.h"
 #include "catalog/pg_operator.h"
-#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/alter.h"
 #include "commands/defrem.h"
@@ -92,7 +90,7 @@ DefineOperator(List *names, List *parameters)
 	oprNamespace = QualifiedNameGetCreationNamespace(names, &oprName);
 
 	/* Check we have creation rights in target namespace */
-	aclresult = object_aclcheck(NamespaceRelationId, oprNamespace, GetUserId(), ACL_CREATE);
+	aclresult = pg_namespace_aclcheck(oprNamespace, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(oprNamespace));
@@ -189,14 +187,14 @@ DefineOperator(List *names, List *parameters)
 
 	if (typeName1)
 	{
-		aclresult = object_aclcheck(TypeRelationId, typeId1, GetUserId(), ACL_USAGE);
+		aclresult = pg_type_aclcheck(typeId1, GetUserId(), ACL_USAGE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error_type(aclresult, typeId1);
 	}
 
 	if (typeName2)
 	{
-		aclresult = object_aclcheck(TypeRelationId, typeId2, GetUserId(), ACL_USAGE);
+		aclresult = pg_type_aclcheck(typeId2, GetUserId(), ACL_USAGE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error_type(aclresult, typeId2);
 	}
@@ -227,13 +225,13 @@ DefineOperator(List *names, List *parameters)
 	 * necessary, since EXECUTE will be checked at any attempted use of the
 	 * operator, but it seems like a good idea anyway.
 	 */
-	aclresult = object_aclcheck(ProcedureRelationId, functionOid, GetUserId(), ACL_EXECUTE);
+	aclresult = pg_proc_aclcheck(functionOid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_FUNCTION,
 					   NameListToString(functionName));
 
 	rettype = get_func_rettype(functionOid);
-	aclresult = object_aclcheck(TypeRelationId, rettype, GetUserId(), ACL_USAGE);
+	aclresult = pg_type_aclcheck(rettype, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error_type(aclresult, rettype);
 
@@ -293,7 +291,7 @@ ValidateRestrictionEstimator(List *restrictionName)
 						NameListToString(restrictionName), "float8")));
 
 	/* Require EXECUTE rights for the estimator */
-	aclresult = object_aclcheck(ProcedureRelationId, restrictionOid, GetUserId(), ACL_EXECUTE);
+	aclresult = pg_proc_aclcheck(restrictionOid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_FUNCTION,
 					   NameListToString(restrictionName));
@@ -351,7 +349,7 @@ ValidateJoinEstimator(List *joinName)
 						NameListToString(joinName), "float8")));
 
 	/* Require EXECUTE rights for the estimator */
-	aclresult = object_aclcheck(ProcedureRelationId, joinOid, GetUserId(), ACL_EXECUTE);
+	aclresult = pg_proc_aclcheck(joinOid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_FUNCTION,
 					   NameListToString(joinName));
@@ -483,7 +481,7 @@ AlterOperator(AlterOperatorStmt *stmt)
 	}
 
 	/* Check permissions. Must be owner. */
-	if (!object_ownercheck(OperatorRelationId, oprId, GetUserId()))
+	if (!pg_oper_ownercheck(oprId, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_OPERATOR,
 					   NameStr(oprForm->oprname));
 

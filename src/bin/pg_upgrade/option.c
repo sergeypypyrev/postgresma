@@ -3,7 +3,7 @@
  *
  *	options functions
  *
- *	Copyright (c) 2010-2023, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/option.c
  */
 
@@ -56,7 +56,6 @@ parseCommandLine(int argc, char *argv[])
 		{"socketdir", required_argument, NULL, 's'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"clone", no_argument, NULL, 1},
-		{"copy", no_argument, NULL, 2},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -98,9 +97,9 @@ parseCommandLine(int argc, char *argv[])
 
 	/* Allow help and version to be run as root, so do the test here. */
 	if (os_user_effective_id == 0)
-		pg_fatal("%s: cannot be run as root", os_info.progname);
+		pg_fatal("%s: cannot be run as root\n", os_info.progname);
 
-	while ((option = getopt_long(argc, argv, "b:B:cd:D:j:kNo:O:p:P:rs:U:v",
+	while ((option = getopt_long(argc, argv, "d:D:b:B:cj:kNo:O:p:P:rs:U:v",
 								 long_options, &optindex)) != -1)
 	{
 		switch (option)
@@ -165,12 +164,12 @@ parseCommandLine(int argc, char *argv[])
 
 			case 'p':
 				if ((old_cluster.port = atoi(optarg)) <= 0)
-					pg_fatal("invalid old port number");
+					pg_fatal("invalid old port number\n");
 				break;
 
 			case 'P':
 				if ((new_cluster.port = atoi(optarg)) <= 0)
-					pg_fatal("invalid new port number");
+					pg_fatal("invalid new port number\n");
 				break;
 
 			case 'r':
@@ -195,10 +194,6 @@ parseCommandLine(int argc, char *argv[])
 				user_opts.transfer_mode = TRANSFER_MODE_CLONE;
 				break;
 
-			case 2:
-				user_opts.transfer_mode = TRANSFER_MODE_COPY;
-				break;
-
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 						os_info.progname);
@@ -207,10 +202,10 @@ parseCommandLine(int argc, char *argv[])
 	}
 
 	if (optind < argc)
-		pg_fatal("too many command-line arguments (first is \"%s\")", argv[optind]);
+		pg_fatal("too many command-line arguments (first is \"%s\")\n", argv[optind]);
 
 	if (log_opts.verbose)
-		pg_log(PG_REPORT, "Running in verbose mode");
+		pg_log(PG_REPORT, "Running in verbose mode\n");
 
 	log_opts.isatty = isatty(fileno(stdout));
 
@@ -253,10 +248,10 @@ parseCommandLine(int argc, char *argv[])
 		canonicalize_path(new_cluster_pgdata);
 
 		if (!getcwd(cwd, MAXPGPATH))
-			pg_fatal("could not determine current directory");
+			pg_fatal("could not determine current directory\n");
 		canonicalize_path(cwd);
 		if (path_is_prefix_of_path(new_cluster_pgdata, cwd))
-			pg_fatal("cannot run pg_upgrade from inside the new cluster data directory on Windows");
+			pg_fatal("cannot run pg_upgrade from inside the new cluster data directory on Windows\n");
 	}
 #endif
 }
@@ -288,7 +283,6 @@ usage(void)
 	printf(_("  -v, --verbose                 enable verbose internal logging\n"));
 	printf(_("  -V, --version                 display version information, then exit\n"));
 	printf(_("  --clone                       clone instead of copying files to new cluster\n"));
-	printf(_("  --copy                        copy files to new cluster (default)\n"));
 	printf(_("  -?, --help                    show this help, then exit\n"));
 	printf(_("\n"
 			 "Before running pg_upgrade you must:\n"
@@ -353,14 +347,14 @@ check_required_directory(char **dirpath, const char *envVarName, bool useCwd,
 			char		cwd[MAXPGPATH];
 
 			if (!getcwd(cwd, MAXPGPATH))
-				pg_fatal("could not determine current directory");
+				pg_fatal("could not determine current directory\n");
 			*dirpath = pg_strdup(cwd);
 		}
 		else if (missingOk)
 			return;
 		else
 			pg_fatal("You must identify the directory where the %s.\n"
-					 "Please use the %s command-line option or the %s environment variable.",
+					 "Please use the %s command-line option or the %s environment variable.\n",
 					 description, cmdLineOption, envVarName);
 	}
 
@@ -390,7 +384,6 @@ adjust_data_dir(ClusterInfo *cluster)
 				cmd_output[MAX_STRING];
 	FILE	   *fp,
 			   *output;
-	int			rc;
 
 	/* Initially assume config dir and data dir are the same */
 	cluster->pgconfig = pg_strdup(cluster->pgdata);
@@ -423,17 +416,13 @@ adjust_data_dir(ClusterInfo *cluster)
 	 */
 	snprintf(cmd, sizeof(cmd), "\"%s/postgres\" -D \"%s\" -C data_directory",
 			 cluster->bindir, cluster->pgconfig);
-	fflush(NULL);
 
 	if ((output = popen(cmd, "r")) == NULL ||
 		fgets(cmd_output, sizeof(cmd_output), output) == NULL)
-		pg_fatal("could not get data directory using %s: %s",
+		pg_fatal("could not get data directory using %s: %s\n",
 				 cmd, strerror(errno));
 
-	rc = pclose(output);
-	if (rc != 0)
-		pg_fatal("could not get control data directory using %s: %s",
-				 cmd, wait_result_to_str(rc));
+	pclose(output);
 
 	/* strip trailing newline and carriage return */
 	(void) pg_strip_crlf(cmd_output);
@@ -455,7 +444,7 @@ adjust_data_dir(ClusterInfo *cluster)
 void
 get_sock_dir(ClusterInfo *cluster, bool live_check)
 {
-#if !defined(WIN32)
+#if defined(HAVE_UNIX_SOCKETS) && !defined(WIN32)
 	if (!live_check)
 		cluster->sockdir = user_opts.socketdir;
 	else
@@ -473,7 +462,7 @@ get_sock_dir(ClusterInfo *cluster, bool live_check)
 		snprintf(filename, sizeof(filename), "%s/postmaster.pid",
 				 cluster->pgdata);
 		if ((fp = fopen(filename, "r")) == NULL)
-			pg_fatal("could not open file \"%s\": %s",
+			pg_fatal("could not open file \"%s\": %s\n",
 					 filename, strerror(errno));
 
 		for (lineno = 1;
@@ -481,7 +470,7 @@ get_sock_dir(ClusterInfo *cluster, bool live_check)
 			 lineno++)
 		{
 			if (fgets(line, sizeof(line), fp) == NULL)
-				pg_fatal("could not read line %d from file \"%s\": %s",
+				pg_fatal("could not read line %d from file \"%s\": %s\n",
 						 lineno, filename, strerror(errno));
 
 			/* potentially overwrite user-supplied value */
@@ -498,10 +487,10 @@ get_sock_dir(ClusterInfo *cluster, bool live_check)
 
 		/* warn of port number correction */
 		if (orig_port != DEF_PGUPORT && old_cluster.port != orig_port)
-			pg_log(PG_WARNING, "user-supplied old port number %hu corrected to %hu",
+			pg_log(PG_WARNING, "user-supplied old port number %hu corrected to %hu\n",
 				   orig_port, cluster->port);
 	}
-#else							/* WIN32 */
+#else							/* !HAVE_UNIX_SOCKETS || WIN32 */
 	cluster->sockdir = NULL;
 #endif
 }

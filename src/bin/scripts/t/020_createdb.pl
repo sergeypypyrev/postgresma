@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2023, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
@@ -13,7 +13,7 @@ program_version_ok('createdb');
 program_options_handling_ok('createdb');
 
 my $node = PostgreSQL::Test::Cluster->new('main');
-$node->init(extra => ['--locale-provider=libc']);
+$node->init;
 $node->start;
 
 $node->issues_sql_like(
@@ -41,7 +41,7 @@ if ($ENV{with_icu} eq 'yes')
 		[
 			'createdb',        '-T',
 			'template0',       '-E', 'UTF8', '--locale-provider=icu',
-			'--locale=C',      '--icu-locale=en', 'foobar5'
+			'--icu-locale=en', 'foobar5'
 		],
 		qr/statement: CREATE DATABASE foobar5 .* LOCALE_PROVIDER icu ICU_LOCALE 'en'/,
 		'create database with ICU locale specified');
@@ -157,23 +157,5 @@ $node->issues_sql_like(
 	[ 'createdb', '-T', 'foobar2', '-S', 'file_copy', 'foobar7' ],
 	qr/statement: CREATE DATABASE foobar7 STRATEGY file_copy TEMPLATE foobar2/,
 	'create database with FILE_COPY strategy');
-
-# Create database owned by role_foobar.
-$node->issues_sql_like(
-	[ 'createdb', '-T', 'foobar2', '-O', 'role_foobar', 'foobar8' ],
-	qr/statement: CREATE DATABASE foobar8 OWNER role_foobar TEMPLATE foobar2/,
-	'create database with owner role_foobar');
-($ret, $stdout, $stderr) = $node->psql(
-	'foobar2',
-	'DROP OWNED BY role_foobar;',
-	on_error_die => 1,
-);
-ok($ret == 0, "DROP OWNED BY role_foobar");
-($ret, $stdout, $stderr) = $node->psql(
-	'foobar2',
-	'DROP DATABASE foobar8;',
-	on_error_die => 1,
-);
-ok($ret == 0, "DROP DATABASE foobar8");
 
 done_testing();

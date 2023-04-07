@@ -2,7 +2,7 @@
 #
 # Makefile for the postgres backend
 #
-# Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/backend/Makefile
@@ -17,7 +17,7 @@ subdir = src/backend
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
-SUBDIRS = access archive backup bootstrap catalog parser commands executor \
+SUBDIRS = access backup bootstrap catalog parser commands executor \
 	foreign lib libpq \
 	main nodes optimizer partitioning port postmaster \
 	regex replication rewrite \
@@ -55,8 +55,6 @@ ifeq ($(with_systemd),yes)
 LIBS += -lsystemd
 endif
 
-override LDFLAGS := $(LDFLAGS) $(LDFLAGS_EX) $(LDFLAGS_EX_BE)
-
 ##########################################################################
 
 all: submake-libpgport submake-catalog-headers submake-utils-headers postgres $(POSTGRES_IMP)
@@ -66,7 +64,7 @@ ifneq ($(PORTNAME), win32)
 ifneq ($(PORTNAME), aix)
 
 postgres: $(OBJS)
-	$(CC) $(CFLAGS) $(call expand_subsys,$^) $(LDFLAGS) $(LIBS) -o $@
+	$(CC) $(CFLAGS) $(call expand_subsys,$^) $(LDFLAGS) $(LDFLAGS_EX) $(export_dynamic) $(LIBS) -o $@
 
 endif
 endif
@@ -75,7 +73,7 @@ endif
 ifeq ($(PORTNAME), cygwin)
 
 postgres: $(OBJS)
-	$(CC) $(CFLAGS) $(call expand_subsys,$^) $(LDFLAGS) -Wl,--stack,$(WIN32_STACK_RLIMIT) -Wl,--export-all-symbols -Wl,--out-implib=libpostgres.a $(LIBS) -o $@
+	$(CC) $(CFLAGS) $(call expand_subsys,$^) $(LDFLAGS) $(LDFLAGS_EX) $(export_dynamic) -Wl,--stack,$(WIN32_STACK_RLIMIT) -Wl,--export-all-symbols -Wl,--out-implib=libpostgres.a $(LIBS) -o $@
 
 # libpostgres.a is actually built in the preceding rule, but we need this to
 # ensure it's newer than postgres; see notes in src/backend/parser/Makefile
@@ -88,7 +86,7 @@ ifeq ($(PORTNAME), win32)
 LIBS += -lsecur32
 
 postgres: $(OBJS) $(WIN32RES)
-	$(CC) $(CFLAGS) $(call expand_subsys,$(OBJS)) $(WIN32RES) $(LDFLAGS) -Wl,--stack=$(WIN32_STACK_RLIMIT) -Wl,--export-all-symbols -Wl,--out-implib=libpostgres.a $(LIBS) -o $@$(X)
+	$(CC) $(CFLAGS) $(call expand_subsys,$(OBJS)) $(WIN32RES) $(LDFLAGS) $(LDFLAGS_EX) -Wl,--stack=$(WIN32_STACK_RLIMIT) -Wl,--export-all-symbols -Wl,--out-implib=libpostgres.a $(LIBS) -o $@$(X)
 
 # libpostgres.a is actually built in the preceding rule, but we need this to
 # ensure it's newer than postgres; see notes in src/backend/parser/Makefile
@@ -100,22 +98,30 @@ endif # win32
 ifeq ($(PORTNAME), aix)
 
 postgres: $(POSTGRES_IMP)
-	$(CC) $(CFLAGS) $(call expand_subsys,$(OBJS)) $(LDFLAGS) -Wl,-bE:$(top_builddir)/src/backend/$(POSTGRES_IMP) $(LIBS) -Wl,-brtllib -o $@
+	$(CC) $(CFLAGS) $(call expand_subsys,$(OBJS)) $(LDFLAGS) $(LDFLAGS_EX) -Wl,-bE:$(top_builddir)/src/backend/$(POSTGRES_IMP) $(LIBS) -Wl,-brtllib -o $@
 
-# Linking to a single .o with -r is a lot faster than building a .a or passing
-# all objects to MKLDEXPORT.
-#
-# It looks alluring to use $(CC) -r instead of ld -r, but that doesn't
-# trivially work with gcc, due to gcc specific static libraries linked in with
-# -r.
 $(POSTGRES_IMP): $(OBJS)
-	ld -r -o SUBSYS.o $(call expand_subsys,$^)
+	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(call expand_subsys,$^)
+ifeq ($(host_os), aix3.2.5)
+	$(MKLDEXPORT) SUBSYS.o $(bindir)/postgres > $@
+else
+ifneq (,$(findstring aix4.1, $(host_os)))
+	$(MKLDEXPORT) SUBSYS.o $(bindir)/postgres > $@
+else
 	$(MKLDEXPORT) SUBSYS.o . > $@
+endif
+endif
 	@rm -f SUBSYS.o
 
 endif # aix
 
 $(top_builddir)/src/port/libpgport_srv.a: | submake-libpgport
+
+
+# The postgres.o target is needed by the rule in Makefile.global that
+# creates the exports file when MAKE_EXPORTS = true.
+postgres.o: $(OBJS)
+	$(CC) $(LDREL) $(call expand_subsys,$^) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@
 
 
 # The following targets are specified in make commands that appear in
@@ -139,14 +145,10 @@ submake-catalog-headers:
 	$(MAKE) -C catalog distprep generated-header-symlinks
 
 # run this unconditionally to avoid needing to know its dependencies here:
-submake-nodes-headers:
-	$(MAKE) -C nodes distprep generated-header-symlinks
-
-# run this unconditionally to avoid needing to know its dependencies here:
 submake-utils-headers:
 	$(MAKE) -C utils distprep generated-header-symlinks
 
-.PHONY: submake-catalog-headers submake-nodes-headers submake-utils-headers
+.PHONY: submake-catalog-headers submake-utils-headers
 
 # Make symlinks for these headers in the include directory. That way
 # we can cut down on the -I options. Also, a symlink is automatically
@@ -161,7 +163,12 @@ submake-utils-headers:
 
 .PHONY: generated-headers
 
-generated-headers: $(top_builddir)/src/include/storage/lwlocknames.h submake-catalog-headers submake-nodes-headers submake-utils-headers
+generated-headers: $(top_builddir)/src/include/parser/gram.h $(top_builddir)/src/include/storage/lwlocknames.h submake-catalog-headers submake-utils-headers
+
+$(top_builddir)/src/include/parser/gram.h: parser/gram.h
+	prereqdir=`cd '$(dir $<)' >/dev/null && pwd` && \
+	  cd '$(dir $@)' && rm -f $(notdir $@) && \
+	  $(LN_S) "$$prereqdir/$(notdir $<)" .
 
 $(top_builddir)/src/include/storage/lwlocknames.h: storage/lmgr/lwlocknames.h
 	prereqdir=`cd '$(dir $<)' >/dev/null && pwd` && \
@@ -177,13 +184,12 @@ utils/probes.o: utils/probes.d $(SUBDIROBJS)
 # Be sure that these files get removed by the maintainer-clean target
 distprep:
 	$(MAKE) -C parser	gram.c gram.h scan.c
-	$(MAKE) -C bootstrap	bootparse.c bootparse.h bootscanner.c
+	$(MAKE) -C bootstrap	bootparse.c bootscanner.c
 	$(MAKE) -C catalog	distprep
-	$(MAKE) -C nodes	distprep
-	$(MAKE) -C replication	repl_gram.c repl_gram.h repl_scanner.c syncrep_gram.c syncrep_gram.h syncrep_scanner.c
+	$(MAKE) -C replication	repl_gram.c repl_scanner.c syncrep_gram.c syncrep_scanner.c
 	$(MAKE) -C storage/lmgr	lwlocknames.h lwlocknames.c
 	$(MAKE) -C utils	distprep
-	$(MAKE) -C utils/adt	jsonpath_gram.c jsonpath_gram.h jsonpath_scan.c
+	$(MAKE) -C utils/adt	jsonpath_gram.c jsonpath_scan.c
 	$(MAKE) -C utils/misc	guc-file.c
 
 
@@ -216,6 +222,12 @@ endif
 
 install-bin: postgres $(POSTGRES_IMP) installdirs
 	$(INSTALL_PROGRAM) postgres$(X) '$(DESTDIR)$(bindir)/postgres$(X)'
+ifneq ($(PORTNAME), win32)
+	@rm -f '$(DESTDIR)$(bindir)/postmaster$(X)'
+	ln -s postgres$(X) '$(DESTDIR)$(bindir)/postmaster$(X)'
+else
+	$(INSTALL_PROGRAM) postgres$(X) '$(DESTDIR)$(bindir)/postmaster$(X)'
+endif
 ifeq ($(MAKE_EXPORTS), true)
 	$(INSTALL_DATA) $(POSTGRES_IMP) '$(DESTDIR)$(pkglibdir)/$(POSTGRES_IMP)'
 	$(INSTALL_PROGRAM) $(MKLDEXPORT) '$(DESTDIR)$(pgxsdir)/$(MKLDEXPORT_DIR)/mkldexport.sh'
@@ -244,7 +256,7 @@ endif
 ##########################################################################
 
 uninstall:
-	rm -f '$(DESTDIR)$(bindir)/postgres$(X)'
+	rm -f '$(DESTDIR)$(bindir)/postgres$(X)' '$(DESTDIR)$(bindir)/postmaster'
 ifeq ($(MAKE_EXPORTS), true)
 	rm -f '$(DESTDIR)$(pkglibdir)/$(POSTGRES_IMP)'
 	rm -f '$(DESTDIR)$(pgxsdir)/$(MKLDEXPORT_DIR)/mkldexport.sh'
@@ -286,24 +298,19 @@ distclean: clean
 
 maintainer-clean: distclean
 	$(MAKE) -C catalog $@
-	$(MAKE) -C nodes $@
 	$(MAKE) -C utils $@
 	rm -f bootstrap/bootparse.c \
-	      bootstrap/bootparse.h \
 	      bootstrap/bootscanner.c \
 	      parser/gram.c \
 	      parser/gram.h \
 	      parser/scan.c \
 	      replication/repl_gram.c \
-	      replication/repl_gram.h \
 	      replication/repl_scanner.c \
 	      replication/syncrep_gram.c \
-	      replication/syncrep_gram.h \
 	      replication/syncrep_scanner.c \
 	      storage/lmgr/lwlocknames.c \
 	      storage/lmgr/lwlocknames.h \
 	      utils/adt/jsonpath_gram.c \
-	      utils/adt/jsonpath_gram.h \
 	      utils/adt/jsonpath_scan.c \
 	      utils/misc/guc-file.c
 
@@ -316,4 +323,4 @@ maintainer-clean: distclean
 # are up to date.  It saves the time of doing all the submakes.
 .PHONY: quick
 quick: $(OBJS)
-	$(CC) $(CFLAGS) $(call expand_subsys,$^) $(LDFLAGS) $(LIBS) -o postgres
+	$(CC) $(CFLAGS) $(call expand_subsys,$^) $(LDFLAGS) $(LDFLAGS_EX) $(export_dynamic) $(LIBS) -o postgres

@@ -31,9 +31,9 @@ PASS = FooBaR1
 .PHONY: ssl-files ssl-files-clean
 
 ssl-files:
-	$(OPENSSL) req -new -x509 -days 10000 -nodes -out server.crt \
+	openssl req -new -x509 -days 10000 -nodes -out server.crt \
 		-keyout server.ckey -subj "/CN=localhost"
-	$(OPENSSL) rsa -aes256 -in server.ckey -out server.key -passout pass:$(PASS)
+	openssl rsa -aes256 -in server.ckey -out server.key -passout pass:$(PASS)
 	rm server.ckey
 
 ssl-files-clean:

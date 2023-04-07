@@ -3,7 +3,7 @@
  * connection.c
  *		  Connection management functions for postgres_fdw
  *
- * Portions Copyright (c) 2012-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/postgres_fdw/connection.c
@@ -17,7 +17,6 @@
 #include "catalog/pg_user_mapping.h"
 #include "commands/defrem.h"
 #include "funcapi.h"
-#include "libpq/libpq-be-fe-helpers.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -271,7 +270,8 @@ GetConnection(UserMapping *user, bool will_prep_stmt, PgFdwConnState **state)
 			 entry->conn);
 		disconnect_pg_server(entry);
 
-		make_new_connection(entry, user);
+		if (entry->conn == NULL)
+			make_new_connection(entry, user);
 
 		begin_remote_xact(entry);
 	}
@@ -446,10 +446,35 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 		/* verify the set of connection parameters */
 		check_conn_params(keywords, values, user);
 
+		/*
+		 * We must obey fd.c's limit on non-virtual file descriptors.  Assume
+		 * that a PGconn represents one long-lived FD.  (Doing this here also
+		 * ensures that VFDs are closed if needed to make room.)
+		 */
+		if (!AcquireExternalFD())
+		{
+#ifndef WIN32					/* can't write #if within ereport() macro */
+			ereport(ERROR,
+					(errcode(ERRCODE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION),
+					 errmsg("could not connect to server \"%s\"",
+							server->servername),
+					 errdetail("There are too many open files on the local server."),
+					 errhint("Raise the server's max_files_per_process and/or \"ulimit -n\" limits.")));
+#else
+			ereport(ERROR,
+					(errcode(ERRCODE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION),
+					 errmsg("could not connect to server \"%s\"",
+							server->servername),
+					 errdetail("There are too many open files on the local server."),
+					 errhint("Raise the server's max_files_per_process setting.")));
+#endif
+		}
+
 		/* OK to make connection */
-		conn = libpqsrv_connect_params(keywords, values,
-									   false,	/* expand_dbname */
-									   PG_WAIT_EXTENSION);
+		conn = PQconnectdbParams(keywords, values, false);
+
+		if (!conn)
+			ReleaseExternalFD();	/* because the PG_CATCH block won't */
 
 		if (!conn || PQstatus(conn) != CONNECTION_OK)
 			ereport(ERROR,
@@ -482,7 +507,12 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 	}
 	PG_CATCH();
 	{
-		libpqsrv_disconnect(conn);
+		/* Release PGconn data structure if we managed to create one */
+		if (conn)
+		{
+			PQfinish(conn);
+			ReleaseExternalFD();
+		}
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -498,8 +528,9 @@ disconnect_pg_server(ConnCacheEntry *entry)
 {
 	if (entry->conn != NULL)
 	{
-		libpqsrv_disconnect(entry->conn);
+		PQfinish(entry->conn);
 		entry->conn = NULL;
+		ReleaseExternalFD();
 	}
 }
 
@@ -1647,14 +1678,17 @@ postgres_fdw_get_connections(PG_FUNCTION_ARGS)
 	while ((entry = (ConnCacheEntry *) hash_seq_search(&scan)))
 	{
 		ForeignServer *server;
-		Datum		values[POSTGRES_FDW_GET_CONNECTIONS_COLS] = {0};
-		bool		nulls[POSTGRES_FDW_GET_CONNECTIONS_COLS] = {0};
+		Datum		values[POSTGRES_FDW_GET_CONNECTIONS_COLS];
+		bool		nulls[POSTGRES_FDW_GET_CONNECTIONS_COLS];
 
 		/* We only look for open remote connections */
 		if (!entry->conn)
 			continue;
 
 		server = GetForeignServerExtended(entry->serverid, FSV_MISSING_OK);
+
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, 0, sizeof(nulls));
 
 		/*
 		 * The foreign server may have been dropped in current explicit

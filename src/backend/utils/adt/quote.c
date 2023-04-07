@@ -3,7 +3,7 @@
  * quote.c
  *	  Functions for quoting identifiers and literals
  *
- * Portions Copyright (c) 2000-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2000-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -14,7 +14,6 @@
 #include "postgres.h"
 
 #include "utils/builtins.h"
-#include "varatt.h"
 
 
 /*

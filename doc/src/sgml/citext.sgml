@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/citext.sgml -->
 
 <sect1 id="citext" xreflabel="citext">
- <title>citext &mdash; a case-insensitive character string type</title>
+ <title>citext</title>
 
  <indexterm zone="citext">
   <primary>citext</primary>
@@ -30,7 +30,7 @@
   on the current database.
  </para>
 
- <sect2 id="citext-rationale">
+ <sect2>
   <title>Rationale</title>
 
   <para>
@@ -84,7 +84,7 @@ SELECT * FROM tab WHERE lower(col) = LOWER(?);
 
  </sect2>
 
- <sect2 id="citext-how-to-use-it">
+ <sect2>
   <title>How to Use It</title>
 
   <para>
@@ -111,7 +111,7 @@ SELECT * FROM users WHERE nick = 'Larry';
   </para>
  </sect2>
 
- <sect2 id="citext-string-comparison-behavior">
+ <sect2>
   <title>String Comparison Behavior</title>
 
   <para>
@@ -196,7 +196,7 @@ SELECT * FROM users WHERE nick = 'Larry';
 
  </sect2>
 
- <sect2 id="citext-limitations">
+ <sect2>
   <title>Limitations</title>
 
    <itemizedlist>
@@ -277,7 +277,7 @@ SELECT * FROM users WHERE nick = 'Larry';
    </itemizedlist>
  </sect2>
 
- <sect2 id="citext-author">
+ <sect2>
   <title>Author</title>
 
   <para>
